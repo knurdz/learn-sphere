@@ -1,8 +1,12 @@
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
+import { getData as getPdfWorkerData } from "pdf-parse/worker";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Material } from "@/lib/supabase/database";
-import { embedTexts, transcribeFile } from "@/lib/providers/openai";
+import { embedTexts } from "@/lib/providers/gemini-embeddings";
+import { transcribeFile } from "@/lib/providers/groq";
+
+PDFParse.setWorker(getPdfWorkerData());
 
 export type SourceSegment = {
   text: string;

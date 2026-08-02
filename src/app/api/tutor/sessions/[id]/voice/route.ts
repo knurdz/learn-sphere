@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { answerTutorQuestion } from "@/lib/tutor";
-import { transcribeFile } from "@/lib/providers/openai";
+import { transcribeFile } from "@/lib/providers/groq";
 import { getAuthContext } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";

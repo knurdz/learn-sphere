@@ -22,9 +22,9 @@ progress. A doomscrolling feed is intentionally not included.
    0004_study_tools.sql.
 
 5. Add provider keys to .env.local:
-   - OPENAI_API_KEY for embeddings and Whisper transcription.
-   - ANTHROPIC_API_KEY and ANTHROPIC_MODEL for grounded tutor and study-tool generation.
-   - NEXT_PUBLIC_BEYOND_PRESENCE_AGENT_ID for the optional managed avatar iframe.
+   - GROQ_API_KEY for tutor responses, study-tool generation, and transcription.
+   - GEMINI_API_KEY for vector embeddings. The default model is gemini-embedding-001 at 1,536 dimensions.
+   - BEYOND_PRESENCE_API_KEY and NEXT_PUBLIC_BEYOND_PRESENCE_AGENT_ID for interactive video sessions.
 
 6. Start the app:
 
@@ -53,15 +53,27 @@ Use this manual sequence to test each product phase:
 2. Phase 2: run migration 0002_ingestion.sql, configure OpenAI, click Index on
    an uploaded file, and confirm the material becomes Ready with rows in
    material_chunks.
-3. Phase 3: run migration 0003_tutor.sql, configure Anthropic, ask a question
-   in /tutor, verify citations, then test the microphone flow. Add a Beyond
-   Presence agent ID to verify the optional avatar iframe.
+3. Phase 3: run migration 0003_tutor.sql, configure Groq, ask a question
+   in /tutor, and verify citations. Configure the Beyond Presence agent and API
+   key, then start the interactive video session from the tutor page.
 4. Phase 4: run migration 0004_study_tools.sql, open /study, generate each tool
-   type, submit a practice test or video quiz, and reload saved tools to verify
+   type, submit a video quiz, and reload saved tools to verify
    the score appears under Recent progress.
 
 The app supports email/password accounts, private study spaces, secure uploads
 for PDF, DOCX, MP3, WAV, and MP4 files up to 25 MB, grounded retrieval,
-voice questions, study guides, flashcards, practice tests, video quizzes, and
-progress tracking. Provider-backed flows require the environment variables
+voice questions, video quizzes, and
+Beyond Presence avatar teaching sessions for new and engaging lessons. The
+engaging lesson tool accepts YouTube URLs with readable captions, renders the
+YouTube player with page-level controls, and gives the avatar the caption context
+for interactive teaching. The page automatically pauses at learning checkpoints
+and sends the avatar a question prompt. Leaving the browser tab pauses the video
+and sends an attention prompt. Optional Beyond Presence webcam vision can also
+let the avatar respond to visible distraction cues after camera permission.
+If the Beyond Presence account does not include programmatic call creation, the
+app automatically uses the managed bey.chat session instead of LiveKit.
+The "Teach a YouTube video" tool is a live session: enter a YouTube URL, let the
+server retrieve its readable captions, and the avatar starts explaining the
+transcript without requiring a study-space video upload.
+Provider-backed flows require the environment variables
 above; Supabase remains the source of truth for user-owned data.

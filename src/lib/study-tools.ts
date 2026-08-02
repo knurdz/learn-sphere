@@ -7,55 +7,6 @@ import type {
 
 const sourceIds = z.array(z.string()).default([]);
 
-const guideSchema = z.object({
-  sections: z
-    .array(
-      z.object({
-        title: z.string().min(1),
-        bullets: z.array(z.string().min(1)).min(1),
-      }),
-    )
-    .min(1),
-  takeaways: z.array(z.string().min(1)).min(1),
-});
-
-const flashcardsSchema = z.object({
-  cards: z
-    .array(
-      z.object({
-        question: z.string().min(1),
-        answer: z.string().min(1),
-        source_ids: sourceIds,
-      }),
-    )
-    .min(1),
-});
-
-const practiceTestSchema = z.object({
-  questions: z
-    .array(
-      z
-        .object({
-          id: z.string().min(1),
-          prompt: z.string().min(1),
-          options: z.array(z.string().min(1)).min(2),
-          correct_index: z.number().int().nonnegative(),
-          explanation: z.string().min(1),
-          source_ids: sourceIds,
-        })
-        .superRefine((question, context) => {
-          if (question.correct_index >= question.options.length) {
-            context.addIssue({
-              code: "custom",
-              message: "correct_index must point to an option",
-              path: ["correct_index"],
-            });
-          }
-        }),
-    )
-    .min(1),
-});
-
 const videoQuizSchema = z.object({
   material_id: z.string().uuid(),
   questions: z
@@ -83,39 +34,74 @@ const videoQuizSchema = z.object({
     .min(1),
 });
 
-export type GuidePayload = z.infer<typeof guideSchema>;
-export type FlashcardsPayload = z.infer<typeof flashcardsSchema>;
-export type PracticeTestPayload = z.infer<typeof practiceTestSchema>;
+const videoSceneSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  duration_seconds: z.number().positive(),
+  visual_direction: z.string().min(1),
+  narration: z.string().min(1),
+  on_screen_text: z.string().min(1),
+  source_ids: sourceIds,
+});
+
+const videoCreateSchema = z.object({
+  title: z.string().min(1),
+  audience: z.string().min(1),
+  duration_seconds: z.number().positive(),
+  hook: z.string().min(1),
+  scenes: z.array(videoSceneSchema).min(1),
+  call_to_action: z.string().min(1),
+});
+
+const engagementMomentSchema = z.object({
+  timestamp_seconds: z.number().nonnegative(),
+  title: z.string().min(1),
+  technique: z.string().min(1),
+  suggested_edit: z.string().min(1),
+  learner_prompt: z.string().min(1),
+  source_ids: sourceIds,
+});
+
+const videoEngageSchema = z.object({
+  material_id: z.string().uuid(),
+  title: z.string().min(1),
+  opening_hook: z.string().min(1),
+  strategy: z.string().min(1),
+  chapters: z
+    .array(
+      z.object({
+        timestamp_seconds: z.number().nonnegative(),
+        title: z.string().min(1),
+      }),
+    )
+    .min(1),
+  engagement_moments: z.array(engagementMomentSchema).min(1),
+  closing_cta: z.string().min(1),
+});
+
 export type VideoQuizPayload = z.infer<typeof videoQuizSchema>;
+export type VideoCreatePayload = z.infer<typeof videoCreateSchema>;
+export type VideoEngagePayload = z.infer<typeof videoEngageSchema>;
 export type ArtifactPayload =
-  | GuidePayload
-  | FlashcardsPayload
-  | PracticeTestPayload
-  | VideoQuizPayload;
+  | VideoQuizPayload
+  | VideoCreatePayload
+  | VideoEngagePayload;
 
 export type ClientArtifactPayload =
-  | GuidePayload
-  | FlashcardsPayload
-  | Omit<PracticeTestPayload, "questions"> & {
-      questions: Array<
-        Omit<PracticeTestPayload["questions"][number], "correct_index" | "explanation"> & {
-          explanation?: string;
-        }
-      >;
-    }
   | Omit<VideoQuizPayload, "questions"> & {
       questions: Array<
         Omit<VideoQuizPayload["questions"][number], "correct_index" | "explanation"> & {
           explanation?: string;
         }
       >;
-    };
+    }
+  | VideoCreatePayload
+  | VideoEngagePayload;
 
 const schemaForKind = {
-  guide: guideSchema,
-  flashcards: flashcardsSchema,
-  practice_test: practiceTestSchema,
   video_quiz: videoQuizSchema,
+  video_create: videoCreateSchema,
+  video_engage: videoEngageSchema,
 } satisfies Record<StudyArtifactKind, z.ZodType<ArtifactPayload>>;
 
 export function parseStudyArtifactPayload(
@@ -133,7 +119,27 @@ export function parseGeneratedStudyArtifact(
     .replace(/^\x60\x60\x60(?:json)?/i, "")
     .replace(/\x60\x60\x60$/i, "")
     .trim();
-  return parseStudyArtifactPayload(kind, JSON.parse(candidate));
+
+  try {
+    return parseStudyArtifactPayload(kind, JSON.parse(candidate));
+  } catch (firstError) {
+    // Some providers still wrap valid JSON in a short explanation. Only
+    // remove surrounding text; schema validation remains authoritative.
+    const start = candidate.indexOf("{");
+    const end = candidate.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return parseStudyArtifactPayload(
+          kind,
+          JSON.parse(candidate.slice(start, end + 1)),
+        );
+      } catch {
+        // Preserve the original parse error for a useful failure message.
+      }
+    }
+
+    throw firstError;
+  }
 }
 
 export function hideQuizAnswers(
@@ -141,7 +147,7 @@ export function hideQuizAnswers(
 ): StudyArtifact & { payload: ClientArtifactPayload } {
   const payload = parseStudyArtifactPayload(artifact.kind, artifact.payload);
 
-  if (artifact.kind === "practice_test" || artifact.kind === "video_quiz") {
+  if (artifact.kind === "video_quiz") {
     if (!("questions" in payload)) {
       throw new Error("Quiz payload is missing questions.");
     }
@@ -175,39 +181,46 @@ export function hideQuizAnswers(
 }
 
 export function artifactTitle(kind: StudyArtifactKind): string {
-  if (kind === "guide") return "AI study guide";
-  if (kind === "flashcards") return "AI flashcards";
-  if (kind === "practice_test") return "Practice test";
-  return "Video quiz";
+  if (kind === "video_quiz") return "Video quiz";
+  if (kind === "video_create") return "Video from scratch";
+  return "Make video engaging";
 }
 
 export function studyToolPrompt(
   kind: StudyArtifactKind,
   context: string,
+  brief = "",
 ): string {
   const outputRules = {
-    guide:
-      'Return JSON with {"sections":[{"title":"...","bullets":["..."]}],"takeaways":["..."]}.',
-    flashcards:
-      'Return JSON with {"cards":[{"question":"...","answer":"...","source_ids":["chunk-id"]}]}.',
-    practice_test:
-      'Return JSON with {"questions":[{"id":"q1","prompt":"...","options":["..."],"correct_index":0,"explanation":"...","source_ids":["chunk-id"]}]}.',
     video_quiz:
       'Return JSON with {"material_id":"video-material-uuid","questions":[{"id":"q1","prompt":"...","options":["..."],"correct_index":0,"explanation":"...","source_ids":["chunk-id"],"timestamp_seconds":0}]}. Use timestamps from the supplied video excerpts.',
+    video_create:
+      'Create an original educational video blueprint. Return JSON with {"title":"...","audience":"...","duration_seconds":180,"hook":"...","scenes":[{"id":"scene-1","title":"...","duration_seconds":30,"visual_direction":"...","narration":"...","on_screen_text":"...","source_ids":["chunk-id"]}],"call_to_action":"..."}. Make the scenes practical enough for a presenter or video editor to produce. If source excerpts are present, use them for factual grounding; otherwise use the user brief as the creative source and keep source_ids empty.',
+    video_engage:
+      'Create a video engagement makeover plan for the supplied lesson video. Return JSON with {"material_id":"video-material-uuid","title":"...","opening_hook":"...","strategy":"...","chapters":[{"timestamp_seconds":0,"title":"..."}],"engagement_moments":[{"timestamp_seconds":30,"title":"...","technique":"...","suggested_edit":"...","learner_prompt":"...","source_ids":["chunk-id"]}],"closing_cta":"..."}. Use only supplied video excerpts and use their timestamps.',
   }[kind];
+
+  const briefInstruction =
+    kind === "video_create"
+      ? "\n\nUSER VIDEO BRIEF:\n" +
+        (brief.trim() || "Create a clear, concise educational lesson from scratch.")
+      : "";
 
   return (
     "Create a useful study artifact from the source excerpts below. " +
-    "Use only the excerpts. Do not invent facts or citations. " +
+    (kind === "video_create"
+      ? "For a scratch video, follow the user brief and use any excerpts only when they are available. "
+      : "Use only the excerpts. Do not invent facts or citations. ") +
     "Keep the language clear for a student. Return JSON only. " +
     outputRules +
     "\n\nSOURCE EXCERPTS:\n" +
-    context
+    (context || "No indexed source excerpts were supplied.") +
+    briefInstruction
   );
 }
 
 export function quizResult(
-  payload: PracticeTestPayload | VideoQuizPayload,
+  payload: VideoQuizPayload,
   answers: Record<string, number>,
 ) {
   const feedback = payload.questions.map((question) => ({

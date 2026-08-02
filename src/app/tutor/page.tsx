@@ -79,7 +79,7 @@ export default async function TutorPage() {
           <>
             <TutorWorkspace studySpaces={studySpaces} />
             <div className="mt-6">
-              <AvatarPanel />
+              <AvatarPanel studySpaceId={studySpaces[0].id} />
             </div>
           </>
         ) : (

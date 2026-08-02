@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Citation, Database } from "@/lib/supabase/database";
-import { generateClaudeText, type ClaudeMessage } from "@/lib/providers/anthropic";
+import { generateGroqText, type GroqMessage } from "@/lib/providers/groq";
 import {
   formatCitationLabel,
   retrieveRelevantChunks,
@@ -74,7 +74,7 @@ export async function answerTutorQuestion(
     userId: string;
     studySpaceId: string;
     question: string;
-    history?: ClaudeMessage[];
+  history?: GroqMessage[];
   },
 ): Promise<TutorAnswer> {
   const chunks = await retrieveRelevantChunks(supabase, {
@@ -104,7 +104,7 @@ export async function answerTutorQuestion(
     )
     .join("\n\n");
 
-  const raw = await generateClaudeText({
+  const raw = await generateGroqText({
     system:
       "You are LearnSphere's grounded tutor. Answer only from the supplied source excerpts. " +
       "If the sources do not support an answer, say so clearly. Return JSON only with this shape: " +

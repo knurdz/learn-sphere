@@ -72,8 +72,8 @@ export default async function StudyPage() {
             Turn indexed material into practice.
           </h1>
           <p className="mt-4 text-base leading-7 text-slate-600">
-            Create grounded guides, flashcards, practice tests, and video quizzes,
-            then keep your quiz results as learning progress.
+            Create avatar-led video lessons and timestamped video quizzes from
+            your indexed materials.
           </p>
         </div>
         {studySpaces && studySpaces.length > 0 ? (

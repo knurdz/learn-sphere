@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AvatarPanel } from "@/components/avatar-panel";
 import type {
   LearningProgress,
   StudyArtifact,
@@ -9,9 +10,8 @@ import type {
 } from "@/lib/supabase/database";
 import type {
   ClientArtifactPayload,
-  FlashcardsPayload,
-  GuidePayload,
-  PracticeTestPayload,
+  VideoCreatePayload,
+  VideoEngagePayload,
   VideoQuizPayload,
 } from "@/lib/study-tools";
 
@@ -19,8 +19,10 @@ type ClientArtifact = Omit<StudyArtifact, "payload"> & {
   payload: ClientArtifactPayload;
 };
 
+type WorkspaceToolKind = StudyArtifactKind | "youtube_tutor";
+
 type QuizQuestion = Omit<
-  PracticeTestPayload["questions"][number],
+  VideoQuizPayload["questions"][number],
   "correct_index" | "explanation"
 > & {
   explanation?: string;
@@ -34,26 +36,26 @@ type AttemptFeedback = {
   explanation: string;
 };
 
-const toolOptions: Array<{ value: StudyArtifactKind; label: string; description: string }> = [
-  {
-    value: "guide",
-    label: "Study guide",
-    description: "A structured summary with key takeaways.",
-  },
-  {
-    value: "flashcards",
-    label: "Flashcards",
-    description: "Quick recall prompts from your indexed material.",
-  },
-  {
-    value: "practice_test",
-    label: "Practice test",
-    description: "Multiple-choice questions with grounded feedback.",
-  },
+const toolOptions: Array<{ value: WorkspaceToolKind; label: string; description: string }> = [
   {
     value: "video_quiz",
     label: "Video quiz",
     description: "Timestamped questions for an indexed lesson video.",
+  },
+  {
+    value: "video_create",
+    label: "Create video from scratch",
+    description: "Let the Beyond Presence avatar teach a new topic live.",
+  },
+  {
+    value: "video_engage",
+    label: "Make video engaging",
+    description: "Play, pause, and discuss a YouTube lesson with the avatar.",
+  },
+  {
+    value: "youtube_tutor",
+    label: "Teach a YouTube video",
+    description: "Give the avatar a YouTube link and learn from its transcript.",
   },
 ];
 
@@ -75,7 +77,9 @@ export function StudyToolsWorkspace({
   studySpaces: StudySpace[];
 }) {
   const [selectedSpaceId, setSelectedSpaceId] = useState(studySpaces[0]?.id ?? "");
-  const [kind, setKind] = useState<StudyArtifactKind>("guide");
+  const [kind, setKind] = useState<WorkspaceToolKind>("youtube_tutor");
+  const [videoBrief, setVideoBrief] = useState("");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
   const [artifacts, setArtifacts] = useState<ClientArtifact[]>([]);
   const [progress, setProgress] = useState<LearningProgress[]>([]);
   const [activeArtifact, setActiveArtifact] = useState<ClientArtifact | null>(null);
@@ -107,7 +111,10 @@ export function StudyToolsWorkspace({
       const loaded = (body.artifacts ?? []) as ClientArtifact[];
       setArtifacts(loaded);
       setProgress((body.progress ?? []) as LearningProgress[]);
-      const selected = loaded.find((artifact) => artifact.kind === kind) ?? loaded[0] ?? null;
+      const selected =
+        kind === "youtube_tutor"
+          ? null
+          : loaded.find((artifact) => artifact.kind === kind) ?? loaded[0] ?? null;
       if (selected) setKind(selected.kind);
       selectArtifact(selected);
       setMessage(loaded.length === 0 ? "No saved tools yet." : "Saved tools loaded.");
@@ -120,20 +127,32 @@ export function StudyToolsWorkspace({
 
   async function generateArtifact() {
     if (!selectedSpaceId) return;
+    if (kind === "youtube_tutor") {
+      setMessage("Start the YouTube avatar tutor in the teaching panel below.");
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
       const response = await fetch("/api/study-tools", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studySpaceId: selectedSpaceId, kind }),
+        body: JSON.stringify({
+          studySpaceId: selectedSpaceId,
+          kind,
+          brief: kind === "video_create" ? videoBrief : undefined,
+        }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(errorMessage(body));
       const generated = body.artifact as ClientArtifact;
       setArtifacts((current) => [generated, ...current]);
       selectArtifact(generated);
-      setMessage("Study tool created and saved.");
+      setMessage(
+        kind === "video_create" || kind === "video_engage"
+          ? "Avatar lesson configuration created. Start the Beyond Presence tutor below."
+          : "Study tool created and saved.",
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not generate the study tool.");
     } finally {
@@ -156,6 +175,7 @@ export function StudyToolsWorkspace({
     }
   }
 
+
   async function submitQuiz(artifact: ClientArtifact) {
     setBusy(true);
     setMessage(null);
@@ -177,57 +197,111 @@ export function StudyToolsWorkspace({
     }
   }
 
-  function renderGuide(payload: GuidePayload) {
+  function renderGeneratedVideo(
+    mode: "video_create" | "video_engage" | "youtube_tutor",
+    brief: string,
+  ) {
+    return (
+      <AvatarPanel studySpaceId={selectedSpaceId} mode={mode} brief={brief} />
+    );
+  }
+
+  function renderVideoCreate(_artifact: ClientArtifact, payload: VideoCreatePayload) {
     return (
       <div className="space-y-6">
-        {payload.sections.map((section) => (
-          <section key={section.title}>
-            <h3 className="text-lg font-semibold text-slate-900">{section.title}</h3>
-            <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
-              {section.bullets.map((bullet) => (
-                <li key={bullet} className="flex gap-3">
-                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-500" />
-                  <span>{bullet}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-        <div className="rounded-2xl bg-indigo-50 p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-700">
-            Key takeaways
-          </p>
-          <ul className="mt-3 space-y-2 text-sm leading-6 text-indigo-950">
-            {payload.takeaways.map((takeaway) => (
-              <li key={takeaway}>• {takeaway}</li>
-            ))}
-          </ul>
+        {renderGeneratedVideo("video_create", videoBrief)}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl bg-indigo-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-700">Audience</p>
+            <p className="mt-2 text-sm leading-6 text-indigo-950">{payload.audience}</p>
+          </div>
+          <div className="rounded-2xl bg-slate-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Video length</p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">{Math.round(payload.duration_seconds)} seconds</p>
+          </div>
         </div>
       </div>
     );
   }
 
-  function renderFlashcards(payload: FlashcardsPayload) {
+  function renderVideoEngage(artifact: ClientArtifact, payload: VideoEngagePayload) {
     return (
-      <div className="grid gap-4 md:grid-cols-2">
-        {payload.cards.map((card, index) => (
-          <article key={card.question + index} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-600">
-              Card {index + 1}
-            </p>
-            <h3 className="mt-3 font-semibold leading-6 text-slate-900">{card.question}</h3>
-            <p className="mt-4 border-t border-slate-200 pt-4 text-sm leading-6 text-slate-600">
-              {card.answer}
-            </p>
-          </article>
-        ))}
+      <div className="space-y-6">
+        {renderGeneratedVideo("video_engage", payload.strategy)}
+        <div className="rounded-2xl bg-slate-950 p-4">
+          {videoUrl ? (
+            <video className="aspect-video w-full rounded-xl bg-black" controls src={videoUrl} />
+          ) : (
+            <div className="flex aspect-video items-center justify-center rounded-xl bg-slate-900 text-center text-sm text-slate-300">
+              Load the indexed lesson video to preview the engagement plan.
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => loadVideo(payload.material_id)}
+            disabled={busy}
+            className="mt-3 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 disabled:opacity-50"
+          >
+            {videoUrl ? "Reload source video" : "Load source video"}
+          </button>
+        </div>
+
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">New opening hook</p>
+          <p className="mt-3 text-sm leading-7 text-amber-950">{payload.opening_hook}</p>
+        </section>
+
+        <section className="rounded-2xl bg-indigo-50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-700">Engagement strategy</p>
+          <p className="mt-3 text-sm leading-7 text-indigo-950">{payload.strategy}</p>
+        </section>
+
+        <section>
+          <h3 className="text-lg font-semibold text-slate-900">Suggested chapters</h3>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {payload.chapters.map((chapter) => (
+              <div key={chapter.timestamp_seconds + chapter.title} className="rounded-2xl border border-slate-200 p-4">
+                <span className="text-xs font-semibold text-indigo-600">
+                  {Math.floor(chapter.timestamp_seconds)}s
+                </span>
+                <p className="mt-2 text-sm font-semibold text-slate-900">{chapter.title}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h3 className="text-lg font-semibold text-slate-900">Engagement moments</h3>
+          <div className="mt-4 space-y-4">
+            {payload.engagement_moments.map((moment) => (
+              <article key={moment.timestamp_seconds + moment.title} className="rounded-2xl border border-slate-200 p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <h4 className="font-semibold text-slate-900">{moment.title}</h4>
+                  <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                    around {Math.floor(moment.timestamp_seconds)}s
+                  </span>
+                </div>
+                <p className="mt-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{moment.technique}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{moment.suggested_edit}</p>
+                <p className="mt-4 rounded-xl bg-slate-50 p-3 text-sm leading-6 text-slate-700">
+                  Learner prompt: {moment.learner_prompt}
+                </p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-2xl bg-emerald-50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Closing call to action</p>
+          <p className="mt-3 text-sm leading-7 text-emerald-950">{payload.closing_cta}</p>
+        </section>
       </div>
     );
   }
 
   function renderQuiz(
     artifact: ClientArtifact,
-    payload: PracticeTestPayload | VideoQuizPayload,
+    payload: VideoQuizPayload,
   ) {
     const questions = payload.questions as unknown as QuizQuestion[];
     const isVideo = artifact.kind === "video_quiz";
@@ -323,16 +397,13 @@ export function StudyToolsWorkspace({
   }
 
   function renderArtifact(artifact: ClientArtifact) {
-    if (artifact.kind === "guide") {
-      return renderGuide(artifact.payload as GuidePayload);
+    if (artifact.kind === "video_quiz") {
+      return renderQuiz(artifact, artifact.payload as VideoQuizPayload);
     }
-    if (artifact.kind === "flashcards") {
-      return renderFlashcards(artifact.payload as FlashcardsPayload);
+    if (artifact.kind === "video_create") {
+      return renderVideoCreate(artifact, artifact.payload as VideoCreatePayload);
     }
-    if (artifact.kind === "practice_test") {
-      return renderQuiz(artifact, artifact.payload as PracticeTestPayload);
-    }
-    return renderQuiz(artifact, artifact.payload as VideoQuizPayload);
+    return renderVideoEngage(artifact, artifact.payload as VideoEngagePayload);
   }
 
   const currentTool = toolOptions.find((option) => option.value === kind);
@@ -353,6 +424,7 @@ export function StudyToolsWorkspace({
             setSelectedSpaceId(event.target.value);
             setArtifacts([]);
             setProgress([]);
+            setYoutubeUrl("");
             selectArtifact(null);
             setMessage(null);
           }}
@@ -387,6 +459,46 @@ export function StudyToolsWorkspace({
           ))}
         </div>
 
+        {kind === "video_create" ? (
+          <div className="mt-6">
+            <label className="block text-sm font-semibold text-slate-700" htmlFor="video-brief">
+              Video brief <span className="font-normal text-slate-400">(required)</span>
+            </label>
+            <textarea
+              id="video-brief"
+              value={videoBrief}
+              onChange={(event) => setVideoBrief(event.target.value)}
+              placeholder="Example: Explain photosynthesis to a 13-year-old in a lively 3-minute lesson."
+              rows={5}
+              className="mt-2 w-full resize-y rounded-xl border border-slate-200 px-3 py-3 text-sm leading-6 outline-none focus:border-indigo-500"
+            />
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              The Beyond Presence avatar will teach this brief live with voice and video.
+            </p>
+          </div>
+        ) : null}
+
+        {kind === "video_engage" || kind === "youtube_tutor" ? (
+          <div className="mt-6">
+            <label className="block text-sm font-semibold text-slate-700" htmlFor="youtube-url">
+              YouTube video URL <span className="font-normal text-slate-400">(required)</span>
+            </label>
+            <input
+              id="youtube-url"
+              type="url"
+              value={youtubeUrl}
+              onChange={(event) => setYoutubeUrl(event.target.value)}
+              placeholder="https://www.youtube.com/watch?v=..."
+              className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none focus:border-indigo-500"
+            />
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              {kind === "youtube_tutor"
+                ? "The avatar will fetch the readable transcript and explain the video step by step."
+                : "The avatar uses the captions for questions and explanations. The page can pause the video for checkpoints and attention prompts."}
+            </p>
+          </div>
+        ) : null}
+
         <div className="mt-6 grid gap-2">
           <button
             type="button"
@@ -396,14 +508,20 @@ export function StudyToolsWorkspace({
           >
             Load saved tools
           </button>
-          <button
-            type="button"
-            onClick={() => generateArtifact()}
-            disabled={busy || !selectedSpaceId}
-            className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {busy ? "Working..." : "Generate selected tool"}
-          </button>
+          {kind === "video_create" || kind === "video_engage" || kind === "youtube_tutor" ? (
+            <p className="rounded-xl bg-indigo-50 px-4 py-3 text-xs leading-5 text-indigo-800">
+              Start the Beyond Presence avatar in the teaching panel.
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => generateArtifact()}
+              disabled={busy || !selectedSpaceId}
+              className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {busy ? "Working..." : "Generate selected tool"}
+            </button>
+          )}
         </div>
       </aside>
 
@@ -414,10 +532,16 @@ export function StudyToolsWorkspace({
               {currentTool?.label}
             </p>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
-              {activeArtifact?.title ?? "Build a study companion"}
+              {activeArtifact?.title ?? (kind === "video_create" || kind === "video_engage" || kind === "youtube_tutor" ? "Teach with your avatar" : "Build a study companion")}
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              Generated only from your indexed materials, then saved privately to this study space.
+              {kind === "video_create"
+                ? "Use the Beyond Presence avatar to teach a new topic from your brief."
+                : kind === "video_engage"
+                  ? "Use the Beyond Presence avatar to make your indexed lesson interactive and engaging."
+                  : kind === "youtube_tutor"
+                    ? "Give the avatar a YouTube link and let it explain the transcript step by step."
+                  : "Generated only from your indexed materials, then saved privately to this study space."}
             </p>
           </div>
           {activeArtifact ? (
@@ -474,7 +598,13 @@ export function StudyToolsWorkspace({
         ) : null}
 
         <div className="mt-8">
-          {activeArtifact ? (
+          {kind === "video_create" ? (
+            <AvatarPanel studySpaceId={selectedSpaceId} mode="video_create" brief={videoBrief} />
+          ) : kind === "video_engage" ? (
+            <AvatarPanel studySpaceId={selectedSpaceId} mode="video_engage" youtubeUrl={youtubeUrl} />
+          ) : kind === "youtube_tutor" ? (
+            <AvatarPanel studySpaceId={selectedSpaceId} mode="youtube_tutor" youtubeUrl={youtubeUrl} />
+          ) : activeArtifact ? (
             renderArtifact(activeArtifact)
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">

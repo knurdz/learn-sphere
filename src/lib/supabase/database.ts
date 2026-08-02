@@ -82,10 +82,9 @@ export type ChatMessage = {
 };
 
 export type StudyArtifactKind =
-  | "guide"
-  | "flashcards"
-  | "practice_test"
-  | "video_quiz";
+  | "video_quiz"
+  | "video_create"
+  | "video_engage";
 
 export type StudyArtifact = {
   id: string;

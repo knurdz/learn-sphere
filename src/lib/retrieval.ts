@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database";
-import { embedTexts } from "@/lib/providers/openai";
+import { embedTexts } from "@/lib/providers/gemini-embeddings";
 
 export type RetrievedChunk = {
   id: string;
@@ -22,7 +22,7 @@ export async function retrieveRelevantChunks(
     limit?: number;
   },
 ) {
-  const [queryEmbedding] = await embedTexts([input.question]);
+  const [queryEmbedding] = await embedTexts([input.question], "RETRIEVAL_QUERY");
   if (!queryEmbedding) {
     return [];
   }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { generateClaudeText } from "@/lib/providers/anthropic";
+import { generateGroqText } from "@/lib/providers/groq";
 import {
   artifactTitle,
   hideQuizAnswers,
@@ -19,9 +19,16 @@ import { getAuthContext } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+const supportedKinds = ["video_quiz", "video_create", "video_engage"] as const;
+
 const requestSchema = z.object({
   studySpaceId: z.string().uuid(),
-  kind: z.enum(["guide", "flashcards", "practice_test", "video_quiz"]),
+  kind: z.enum([
+    "video_quiz",
+    "video_create",
+    "video_engage",
+  ]),
+  brief: z.string().trim().max(1500).optional(),
 });
 
 type SourceChunk = Pick<
@@ -80,7 +87,7 @@ async function getStudySpaceMaterials(
 
   const readyMaterials = materials ?? [];
   const selectedMaterials =
-    kind === "video_quiz"
+    kind === "video_quiz" || kind === "video_engage"
       ? readyMaterials.filter((material) => material.mime_type.startsWith("video/"))
       : readyMaterials;
 
@@ -108,6 +115,7 @@ export async function GET(request: NextRequest) {
     .select("*")
     .eq("user_id", context.user.id)
     .eq("study_space_id", studySpaceId)
+    .in("kind", [...supportedKinds])
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -118,7 +126,8 @@ export async function GET(request: NextRequest) {
     .from("learning_progress")
     .select("*")
     .eq("user_id", context.user.id)
-    .eq("study_space_id", studySpaceId);
+    .eq("study_space_id", studySpaceId)
+    .in("item_type", [...supportedKinds]);
 
   try {
     return NextResponse.json({
@@ -179,12 +188,13 @@ export async function POST(request: NextRequest) {
   if (materialResult.error) {
     return NextResponse.json({ error: materialResult.error }, { status: 500 });
   }
-  if (materialResult.materials.length === 0) {
+  const requiresMaterial = kind !== "video_create";
+  if (requiresMaterial && materialResult.materials.length === 0) {
     return NextResponse.json(
       {
         error:
-          kind === "video_quiz"
-            ? "Index at least one ready video before creating a video quiz."
+          kind === "video_quiz" || kind === "video_engage"
+            ? "Index at least one ready video before using this video tool."
             : "Index at least one material before creating a study tool.",
       },
       { status: 400 },
@@ -192,19 +202,36 @@ export async function POST(request: NextRequest) {
   }
 
   const materialIds = materialResult.materials.map((material) => material.id);
-  const { data: chunks, error: chunkError } = await context.supabase
-    .from("material_chunks")
-    .select("id,material_id,content,page_number,start_seconds,end_seconds,chunk_index")
-    .eq("user_id", context.user.id)
-    .eq("study_space_id", studySpaceId)
-    .in("material_id", materialIds)
-    .order("chunk_index", { ascending: true })
-    .limit(40);
+  let chunks: Array<
+    Pick<
+      MaterialChunk,
+      | "id"
+      | "material_id"
+      | "content"
+      | "page_number"
+      | "start_seconds"
+      | "end_seconds"
+      | "chunk_index"
+    >
+  > = [];
 
-  if (chunkError) {
-    return NextResponse.json({ error: chunkError.message }, { status: 500 });
+  if (materialIds.length > 0) {
+    const { data: materialChunks, error: chunkError } = await context.supabase
+      .from("material_chunks")
+      .select("id,material_id,content,page_number,start_seconds,end_seconds,chunk_index")
+      .eq("user_id", context.user.id)
+      .eq("study_space_id", studySpaceId)
+      .in("material_id", materialIds)
+      .order("chunk_index", { ascending: true })
+      .limit(40);
+
+    if (chunkError) {
+      return NextResponse.json({ error: chunkError.message }, { status: 500 });
+    }
+    chunks = materialChunks ?? [];
   }
-  if (!chunks || chunks.length === 0) {
+
+  if (requiresMaterial && chunks.length === 0) {
     return NextResponse.json(
       { error: "Your ready material does not have indexed excerpts yet." },
       { status: 400 },
@@ -221,10 +248,12 @@ export async function POST(request: NextRequest) {
 
   let payload;
   try {
-    const raw = await generateClaudeText({
+    const raw = await generateGroqText({
       system:
         "You create source-grounded learning tools for LearnSphere. " +
-        "Use only the provided excerpts, keep every question answerable from them, " +
+        (kind === "video_create"
+          ? "Follow the user's video brief and use supplied excerpts only when available. "
+          : "Use only the provided excerpts, keep every question answerable from them, ") +
         "and return valid JSON with no markdown.",
       messages: [
         {
@@ -233,17 +262,17 @@ export async function POST(request: NextRequest) {
             "STUDY SPACE: " +
             space.name +
             "\n\n" +
-            studyToolPrompt(kind, sourceContext(contextChunks)),
+            studyToolPrompt(kind, sourceContext(contextChunks), parsedBody.data.brief),
         },
       ],
-      maxTokens: kind === "guide" ? 2000 : 2800,
+      maxTokens: 2800,
     });
     payload = parseGeneratedStudyArtifact(kind, raw);
     if (
-      kind === "video_quiz" &&
+      (kind === "video_quiz" || kind === "video_engage") &&
       (!("material_id" in payload) || !materialIds.includes(payload.material_id))
     ) {
-      throw new Error("The generated video quiz selected an invalid material.");
+      throw new Error("The generated video tool selected an invalid material.");
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Generation failed.";

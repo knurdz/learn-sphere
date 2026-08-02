@@ -20,6 +20,6 @@ export function createSupabaseBrowserClient() {
     );
   }
 
-  browserClient = createBrowserClient<Database>(url, anonKey);
+  browserClient = createBrowserClient<Database>(url.replace(/\/+$/, ""), anonKey);
   return browserClient;
 }

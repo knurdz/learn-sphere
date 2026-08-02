@@ -45,7 +45,7 @@ export async function POST(
   if (!artifact) {
     return NextResponse.json({ error: "Study tool not found." }, { status: 404 });
   }
-  if (artifact.kind !== "practice_test" && artifact.kind !== "video_quiz") {
+  if (artifact.kind !== "video_quiz") {
     return NextResponse.json({ error: "This study tool does not have an attempt." }, { status: 400 });
   }
 

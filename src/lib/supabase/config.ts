@@ -15,5 +15,5 @@ export function getSupabaseEnv() {
     );
   }
 
-  return { url, anonKey };
+  return { url: url.replace(/\/+$/, ""), anonKey };
 }
