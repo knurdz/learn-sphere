@@ -26,6 +26,16 @@ describe("validateMaterialFile", () => {
     });
   });
 
+  it("accepts pasted text notes", () => {
+    expect(
+      validateMaterialFile({
+        name: "pasted-notes.txt",
+        type: "text/plain",
+        size: 2048,
+      }),
+    ).toEqual({ valid: true, mimeType: "text/plain" });
+  });
+
   it("rejects unsupported files", () => {
     expect(
       validateMaterialFile({

@@ -1,9 +1,9 @@
 # LearnSphere
 
 LearnSphere is a grounded study workspace MVP built with Next.js and Supabase.
-It supports private study spaces, PDF/DOCX/audio/video ingestion, source-aware
-tutoring, optional Beyond Presence avatars, generated study tools, and quiz
-progress. A doomscrolling feed is intentionally not included.
+It supports private study spaces, PDF/DOCX/TXT/audio/video ingestion,
+source-aware tutoring, optional Beyond Presence avatars, generated study tools,
+quiz progress, and a private mixed learning feed.
 
 ## Local setup
 
@@ -17,14 +17,22 @@ progress. A doomscrolling feed is intentionally not included.
 
 3. Add your Supabase project URL and anon key to .env.local.
 
-4. Run these migrations in order in the Supabase SQL editor:
-   0001_phase1.sql, 0002_ingestion.sql, 0003_tutor.sql, and
-   0004_study_tools.sql.
+4. Apply the migrations to the `idealize-video` Supabase project with the CLI:
+
+   ~~~powershell
+   npx.cmd supabase login
+   npx.cmd supabase link --project-ref YOUR_PROJECT_REF
+   npx.cmd supabase db push
+   ~~~
+
+   Use `npx.cmd supabase db push --dry-run` first to preview pending migrations.
 
 5. Add provider keys to .env.local:
    - GROQ_API_KEY for tutor responses, study-tool generation, and transcription.
    - GEMINI_API_KEY for vector embeddings. The default model is gemini-embedding-001 at 1,536 dimensions.
    - BEYOND_PRESENCE_API_KEY and NEXT_PUBLIC_BEYOND_PRESENCE_AGENT_ID for interactive video sessions.
+   - No separate meme-service credentials are needed. Meme rendering and learning-pack
+     generation run inside the authenticated Next.js API and use the same Supabase project.
 
 6. Start the app:
 
@@ -59,11 +67,20 @@ Use this manual sequence to test each product phase:
 4. Phase 4: run migration 0004_study_tools.sql, open /study, generate each tool
    type, submit a video quiz, and reload saved tools to verify
    the score appears under Recent progress.
+5. Phase 5: run migration 0008_learning_feed.sql, index a material, create a
+   learning pack from the dashboard, and open /feed to scroll through private
+   memes and practice cards. The `/api/learning/generate` route is the only
+   generation API; it saves all output to this app's Supabase database and
+   private `learning-assets` bucket.
 
 The app supports email/password accounts, private study spaces, secure uploads
-for PDF, DOCX, MP3, WAV, and MP4 files up to 25 MB, grounded retrieval,
+for PDF, DOCX, TXT, MP3, WAV, and MP4 files up to 25 MB, grounded retrieval,
 voice questions, video quizzes, and
 Beyond Presence avatar teaching sessions for new and engaging lessons. The
+learning feed adds private, mixed meme and practice-card reels generated from
+indexed material. The sibling `idealize-meme-gen` project is retained only as
+legacy source/reference material; it is not required at runtime and does not
+own user records, APIs, or feed storage.
 engaging lesson tool accepts YouTube URLs with readable captions, renders the
 YouTube player with page-level controls, and gives the avatar the caption context
 for interactive teaching. The page automatically pauses at learning checkpoints

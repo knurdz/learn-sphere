@@ -1,8 +1,15 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { StudySpace } from "@/lib/supabase/database";
 
-export function CreateStudySpaceForm() {
+export function CreateStudySpaceForm({
+  onCreated,
+}: {
+  onCreated?: (studySpace: StudySpace) => void;
+}) {
+  const router = useRouter();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
@@ -27,7 +34,12 @@ export function CreateStudySpaceForm() {
 
       setName("");
       setDescription("");
-      window.location.reload();
+      const studySpace = (result as { studySpace?: StudySpace }).studySpace;
+      if (studySpace && onCreated) {
+        onCreated(studySpace);
+      } else {
+        router.refresh();
+      }
     } catch (caughtError) {
       setError(
         caughtError instanceof Error

@@ -15,7 +15,8 @@ import type {
   VideoQuizPayload,
 } from "@/lib/study-tools";
 
-type ClientArtifact = Omit<StudyArtifact, "payload"> & {
+type ClientArtifact = Omit<StudyArtifact, "payload" | "kind"> & {
+  kind: StudyArtifactKind;
   payload: ClientArtifactPayload;
 };
 

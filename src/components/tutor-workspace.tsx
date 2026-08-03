@@ -28,11 +28,23 @@ function CitationList({ message }: { message: ChatMessage }) {
   );
 }
 
-export function TutorWorkspace({ studySpaces }: { studySpaces: StudySpace[] }) {
-  const [selectedSpaceId, setSelectedSpaceId] = useState(studySpaces[0]?.id || "");
+export function TutorWorkspace({
+  studySpaces,
+  initialStudySpaceId,
+  initialQuestion = "",
+}: {
+  studySpaces: StudySpace[];
+  initialStudySpaceId?: string;
+  initialQuestion?: string;
+}) {
+  const [selectedSpaceId, setSelectedSpaceId] = useState(
+    initialStudySpaceId && studySpaces.some((space) => space.id === initialStudySpaceId)
+      ? initialStudySpaceId
+      : studySpaces[0]?.id || "",
+  );
   const [sessionId, setSessionId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(initialQuestion);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [isBusy, setIsBusy] = useState(false);

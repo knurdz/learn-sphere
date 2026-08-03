@@ -2,15 +2,25 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { AvatarPanel } from "@/components/avatar-panel";
+import { AppShell } from "@/components/app-shell";
 import { SetupCard } from "@/components/setup-card";
 import { TutorWorkspace } from "@/components/tutor-workspace";
 import { getAuthContext } from "@/lib/supabase/server";
+import type { StudySpace } from "@/lib/supabase/database";
 
 export const metadata: Metadata = {
   title: "Tutor | LearnSphere",
 };
 
-export default async function TutorPage() {
+export default async function TutorPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    studySpaceId?: string;
+    prompt?: string;
+    returnTo?: string;
+  }>;
+}) {
   const context = await getAuthContext();
 
   if (!context.configured) {
@@ -31,38 +41,16 @@ export default async function TutorPage() {
     .from("study_spaces")
     .select("*")
     .order("created_at", { ascending: false });
+  const params = await searchParams;
+  const spaces = (studySpaces ?? []) as StudySpace[];
+  const selectedSpaceId = spaces.some((space) => space.id === params.studySpaceId)
+    ? params.studySpaceId
+    : spaces[0]?.id;
 
   return (
-    <main className="min-h-screen bg-[#f6f8fc] text-slate-950">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 lg:px-10">
-          <Link href="/dashboard" className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-600 text-lg font-bold text-white">
-              L
-            </span>
-            <span>
-              <span className="block text-lg font-semibold tracking-tight">LearnSphere</span>
-              <span className="block text-xs font-medium uppercase tracking-[0.18em] text-indigo-600">
-                Grounded tutor
-              </span>
-            </span>
-          </Link>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/study"
-              className="rounded-xl bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100"
-            >
-              Study tools
-            </Link>
-            <form action="/auth/signout" method="post">
-              <button className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" type="submit">
-                Sign out
-              </button>
-            </form>
-          </div>
-        </div>
-      </header>
-      <div className="mx-auto max-w-7xl px-6 py-10 lg:px-10">
+    <AppShell>
+      <main className="min-h-screen bg-[#f6f8fc] text-slate-950">
+        <div className="mx-auto max-w-7xl px-5 py-10 lg:px-10">
         <div className="mb-10 max-w-3xl">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-600">
             LearnSphere tutor
@@ -74,12 +62,21 @@ export default async function TutorPage() {
             Choose a study space, ask a question, and get a source-aware
             explanation from your indexed materials.
           </p>
+          {params.returnTo === "/feed" && (
+            <Link className="mt-5 inline-flex text-sm font-semibold text-indigo-600 hover:text-indigo-800" href="/feed">
+              ← Back to your feed
+            </Link>
+          )}
         </div>
-        {studySpaces && studySpaces.length > 0 ? (
+        {spaces.length > 0 ? (
           <>
-            <TutorWorkspace studySpaces={studySpaces} />
+            <TutorWorkspace
+              studySpaces={spaces}
+              initialStudySpaceId={selectedSpaceId}
+              initialQuestion={params.prompt}
+            />
             <div className="mt-6">
-              <AvatarPanel studySpaceId={studySpaces[0].id} />
+              <AvatarPanel studySpaceId={selectedSpaceId ?? spaces[0].id} />
             </div>
           </>
         ) : (
@@ -94,7 +91,8 @@ export default async function TutorPage() {
             </Link>
           </div>
         )}
-      </div>
-    </main>
+        </div>
+      </main>
+    </AppShell>
   );
 }

@@ -5,7 +5,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/config";
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
-  const next = url.searchParams.get("next") || "/dashboard";
+  const next = url.searchParams.get("next") || "/feed";
 
   if (hasSupabaseEnv() && code) {
     const supabase = await createSupabaseServerClient();

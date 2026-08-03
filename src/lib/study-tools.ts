@@ -145,7 +145,8 @@ export function parseGeneratedStudyArtifact(
 export function hideQuizAnswers(
   artifact: StudyArtifact,
 ): StudyArtifact & { payload: ClientArtifactPayload } {
-  const payload = parseStudyArtifactPayload(artifact.kind, artifact.payload);
+  const videoKind = artifact.kind as StudyArtifactKind;
+  const payload = parseStudyArtifactPayload(videoKind, artifact.payload);
 
   if (artifact.kind === "video_quiz") {
     if (!("questions" in payload)) {

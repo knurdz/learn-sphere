@@ -1,14 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export function IngestMaterialButton({
   materialId,
   status,
+  onIndexed,
 }: {
   materialId: string;
   status: "uploaded" | "ready" | "error";
+  onIndexed?: () => void;
 }) {
+  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -26,7 +30,11 @@ export function IngestMaterialButton({
         throw new Error(result.error || "Indexing failed.");
       }
 
-      window.location.reload();
+      if (onIndexed) {
+        onIndexed();
+      } else {
+        router.refresh();
+      }
     } catch (caughtError) {
       setError(
         caughtError instanceof Error

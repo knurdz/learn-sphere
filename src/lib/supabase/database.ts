@@ -86,11 +86,36 @@ export type StudyArtifactKind =
   | "video_create"
   | "video_engage";
 
+export type LearningFeedKind =
+  | "meme"
+  | "quiz"
+  | "flashcard"
+  | "fill_blank"
+  | "true_false"
+  | "did_you_know";
+
+export type ArtifactKind = StudyArtifactKind | LearningFeedKind;
+
+export type LearningAtom = {
+  id: string;
+  user_id: string;
+  study_space_id: string;
+  material_id: string;
+  concept: string;
+  tension: Json;
+  emotional_shape: "dilemma" | "preference" | "betrayal" | "irony" | "escalation";
+  created_at: string;
+};
+
 export type StudyArtifact = {
   id: string;
   user_id: string;
   study_space_id: string;
-  kind: StudyArtifactKind;
+  atom_id: string | null;
+  material_id: string | null;
+  asset_path: string | null;
+  generation_key: string | null;
+  kind: ArtifactKind;
   title: string;
   payload: Json;
   created_at: string;
@@ -110,7 +135,7 @@ export type LearningProgress = {
   user_id: string;
   study_space_id: string;
   artifact_id: string;
-  item_type: StudyArtifactKind;
+  item_type: ArtifactKind;
   completed_at: string | null;
   last_score: number | null;
 };
@@ -184,6 +209,23 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
+      learning_atoms: {
+        Row: LearningAtom;
+        Insert: {
+          user_id: string;
+          study_space_id: string;
+          material_id: string;
+          concept: string;
+          tension: Json;
+          emotional_shape: LearningAtom["emotional_shape"];
+        };
+        Update: {
+          concept?: string;
+          tension?: Json;
+          emotional_shape?: LearningAtom["emotional_shape"];
+        };
+        Relationships: [];
+      };
       chat_sessions: {
         Row: ChatSession;
         Insert: {
@@ -214,11 +256,20 @@ export type Database = {
         Insert: {
           user_id: string;
           study_space_id: string;
-          kind: StudyArtifactKind;
+          atom_id?: string | null;
+          material_id?: string | null;
+          asset_path?: string | null;
+          generation_key?: string | null;
+          kind: ArtifactKind;
           title: string;
           payload: Json;
         };
         Update: {
+          atom_id?: string | null;
+          material_id?: string | null;
+          asset_path?: string | null;
+          generation_key?: string | null;
+          kind?: ArtifactKind;
           title?: string;
           payload?: Json;
         };
@@ -241,7 +292,7 @@ export type Database = {
           user_id: string;
           study_space_id: string;
           artifact_id: string;
-          item_type: StudyArtifactKind;
+          item_type: ArtifactKind;
           completed_at?: string | null;
           last_score?: number | null;
         };

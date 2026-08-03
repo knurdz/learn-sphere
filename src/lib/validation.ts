@@ -5,6 +5,7 @@ export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 export const supportedMaterialMimes = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/plain",
   "audio/mpeg",
   "audio/wav",
   "video/mp4",
@@ -28,6 +29,7 @@ export const studySpaceInputSchema = z.object({
 const mimeByExtension: Record<string, (typeof supportedMaterialMimes)[number]> = {
   pdf: "application/pdf",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  txt: "text/plain",
   mp3: "audio/mpeg",
   wav: "audio/wav",
   mp4: "video/mp4",

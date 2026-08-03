@@ -83,6 +83,17 @@ async function extractDocxSegments(buffer: Buffer): Promise<SourceSegment[]> {
   ];
 }
 
+async function extractTextSegments(buffer: Buffer): Promise<SourceSegment[]> {
+  return [
+    {
+      text: buffer.toString("utf8"),
+      pageNumber: null,
+      startSeconds: null,
+      endSeconds: null,
+    },
+  ];
+}
+
 async function extractMediaSegments(
   material: Material,
   buffer: Buffer,
@@ -111,6 +122,10 @@ async function extractSegments(material: Material, buffer: Buffer) {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   ) {
     return extractDocxSegments(buffer);
+  }
+
+  if (material.mime_type === "text/plain") {
+    return extractTextSegments(buffer);
   }
 
   return extractMediaSegments(material, buffer);

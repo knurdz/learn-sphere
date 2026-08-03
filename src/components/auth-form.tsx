@@ -33,7 +33,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
             options: {
               data: { display_name: displayName },
               emailRedirectTo:
-                window.location.origin + "/auth/callback?next=/dashboard",
+                window.location.origin + "/auth/callback?next=/feed",
             },
           })
         : await supabase.auth.signInWithPassword({ email, password });
@@ -45,7 +45,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       if (isSignup && !result.data.session) {
         setMessage("Check your email to confirm your account, then sign in.");
       } else {
-        router.push("/dashboard");
+        router.push("/feed");
         router.refresh();
       }
     } catch (caughtError) {

@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { AppShell } from "@/components/app-shell";
 import { CreateStudySpaceForm } from "@/components/create-study-space-form";
 import { IngestMaterialButton } from "@/components/ingest-material-button";
+import { GenerateLearningPackButton } from "@/components/generate-learning-pack-button";
 import { UploadMaterialForm } from "@/components/upload-material-form";
 import { formatFileSize } from "@/lib/materials";
 import type { Material, StudySpace } from "@/lib/supabase/database";
@@ -26,59 +28,23 @@ export function DashboardShell({
   const spaceNames = new Map(studySpaces.map((space) => [space.id, space.name]));
 
   return (
-    <main className="min-h-screen bg-[#f6f8fc] text-slate-950">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 lg:px-10">
-          <Link href="/dashboard" className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-600 text-lg font-bold text-white">
-              L
-            </span>
-            <span>
-              <span className="block text-lg font-semibold tracking-tight">LearnSphere</span>
-              <span className="block text-xs font-medium uppercase tracking-[0.18em] text-indigo-600">
-                Student workspace
-              </span>
-            </span>
-          </Link>
-          <div className="flex items-center gap-4">
-            <span className="hidden text-sm text-slate-500 sm:inline">{email}</span>
-            <Link
-              className="hidden rounded-xl bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100 md:inline-flex"
-              href="/tutor"
-            >
-              Open tutor
-            </Link>
-            <Link
-              className="hidden rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 md:inline-flex"
-              href="/study"
-            >
-              Study tools
-            </Link>
-            <form action="/auth/signout" method="post">
-              <button
-                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
-                type="submit"
-              >
-                Sign out
-              </button>
-            </form>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-7xl px-6 py-10 lg:px-10">
+    <AppShell email={email}>
+      <main className="min-h-screen bg-[#f6f8fc] text-slate-950">
+        <div className="mx-auto max-w-7xl px-5 py-10 lg:px-10">
         <section className="mb-10 max-w-3xl">
           <p className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-indigo-600">
-            Your learning base
+            Your library
           </p>
           <h1 className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-            Make your study materials easier to return to.
+            Keep your learning world organized.
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
-            Create a private space for each subject, upload the material you
-            already use, index them privately, and turn them into grounded
-            tutoring and active practice.
+            Your feed is for momentum. Your library is where subjects, sources,
+            and generation status stay easy to manage.
           </p>
+          <Link className="mt-6 inline-flex rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700" href="/feed">
+            Continue learning
+          </Link>
         </section>
 
         <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
@@ -150,12 +116,19 @@ export function DashboardShell({
                       status={material.status}
                     />
                   )}
+                  {material.status === "ready" && (
+                    <GenerateLearningPackButton
+                      studySpaceId={material.study_space_id}
+                      materialId={material.id}
+                    />
+                  )}
                 </article>
               ))}
             </div>
           )}
         </section>
-      </div>
-    </main>
+        </div>
+      </main>
+    </AppShell>
   );
 }
