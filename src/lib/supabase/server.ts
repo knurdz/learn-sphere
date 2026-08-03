@@ -1,14 +1,30 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseEnv } from "./config";
 import type { Database } from "./database";
 
-export async function createSupabaseServerClient(): Promise<
+export function getBearerToken(request?: Request) {
+  return request?.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? null;
+}
+
+export async function createSupabaseServerClient(
+  request?: Request,
+): Promise<
   SupabaseClient<Database>
 > {
-  const cookieStore = await cookies();
   const { url, anonKey } = getSupabaseEnv();
+  const bearer = getBearerToken(request);
+
+  // Native clients authenticate with their Supabase access token instead of
+  // the browser cookie maintained by the Next.js middleware.
+  if (bearer) {
+    return createClient<Database>(url, anonKey, {
+      global: { headers: { Authorization: `Bearer ${bearer}` } },
+    });
+  }
+
+  const cookieStore = await cookies();
 
   return createServerClient<Database>(url, anonKey, {
     cookies: {
@@ -28,7 +44,7 @@ export async function createSupabaseServerClient(): Promise<
   });
 }
 
-export async function getAuthContext() {
+export async function getAuthContext(request?: Request) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return {
       configured: false as const,
@@ -37,10 +53,11 @@ export async function getAuthContext() {
     };
   }
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient(request);
+  const bearer = getBearerToken(request);
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = bearer ? await supabase.auth.getUser(bearer) : await supabase.auth.getUser();
 
   return {
     configured: true as const,

@@ -8,7 +8,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const context = await getAuthContext();
+  const context = await getAuthContext(request);
 
   if (!context.configured) {
     return NextResponse.json(

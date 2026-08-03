@@ -4,7 +4,7 @@ import { materialInputSchema } from "@/lib/validation";
 import { getAuthContext } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
-  const context = await getAuthContext();
+  const context = await getAuthContext(request);
 
   if (!context.configured) {
     return NextResponse.json(

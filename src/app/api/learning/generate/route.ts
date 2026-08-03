@@ -36,7 +36,7 @@ function safeAssetKey(value: string) {
 }
 
 export async function POST(request: Request) {
-  const context = await getAuthContext();
+  const context = await getAuthContext(request);
 
   if (!context.configured || !context.supabase) {
     return NextResponse.json(

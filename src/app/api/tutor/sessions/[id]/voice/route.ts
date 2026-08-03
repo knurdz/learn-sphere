@@ -10,7 +10,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const context = await getAuthContext();
+  const context = await getAuthContext(request);
   if (!context.configured) {
     return NextResponse.json({ error: "Supabase is not configured." }, { status: 503 });
   }

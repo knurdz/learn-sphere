@@ -117,7 +117,7 @@ async function buildTeachingInstructions(
 }
 
 export async function POST(request: Request) {
-  const context = await getAuthContext();
+  const context = await getAuthContext(request);
   if (!context.user || !context.supabase) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
@@ -164,7 +164,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const context = await getAuthContext();
+  const context = await getAuthContext(request);
   if (!context.user) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
 
   const parsed = stopSchema.safeParse(await request.json().catch(() => null));

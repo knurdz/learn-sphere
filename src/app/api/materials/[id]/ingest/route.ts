@@ -10,7 +10,7 @@ export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const context = await getAuthContext();
+  const context = await getAuthContext(_request);
 
   if (!context.configured) {
     return NextResponse.json(

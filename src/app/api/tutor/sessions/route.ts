@@ -7,7 +7,7 @@ const sessionSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const context = await getAuthContext();
+  const context = await getAuthContext(request);
 
   if (!context.configured) {
     return NextResponse.json(

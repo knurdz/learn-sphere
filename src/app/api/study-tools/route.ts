@@ -95,7 +95,7 @@ async function getStudySpaceMaterials(
 }
 
 export async function GET(request: NextRequest) {
-  const context = await getAuthContext();
+  const context = await getAuthContext(request);
 
   if (!context.configured || !context.supabase) {
     return NextResponse.json({ error: "Supabase is not configured." }, { status: 503 });
@@ -145,7 +145,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const context = await getAuthContext();
+  const context = await getAuthContext(request);
 
   if (!context.configured || !context.supabase) {
     return NextResponse.json({ error: "Supabase is not configured." }, { status: 503 });

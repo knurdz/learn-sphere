@@ -94,3 +94,24 @@ server retrieve its readable captions, and the avatar starts explaining the
 transcript without requiring a study-space video upload.
 Provider-backed flows require the environment variables
 above; Supabase remains the source of truth for user-owned data.
+
+## Flutter mobile client
+
+The primary native client is in [`flutter_app/`](flutter_app/). It targets
+Android and iOS, uses Supabase directly for authenticated user data and
+storage, and calls the Next.js API with a Supabase bearer token for ingestion,
+AI generation, tutor responses, quiz scoring, and Beyond Presence sessions.
+
+Run it with:
+
+```bash
+cd flutter_app
+flutter pub get
+flutter run \
+  --dart-define=SUPABASE_URL=https://your-project.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=your-anon-key \
+  --dart-define=API_BASE_URL=https://your-next-api.example.com
+```
+
+The Flutter client does not contain provider secrets. Configure
+`learnsphere://auth/callback` as a Supabase redirect URL for email confirmation.

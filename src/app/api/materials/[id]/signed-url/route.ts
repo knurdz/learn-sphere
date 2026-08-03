@@ -4,10 +4,10 @@ import { getAuthContext } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const context = await getAuthContext();
+  const context = await getAuthContext(request);
 
   if (!context.configured || !context.supabase) {
     return NextResponse.json({ error: "Supabase is not configured." }, { status: 503 });
