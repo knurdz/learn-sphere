@@ -15,10 +15,6 @@ export const metadata: Metadata = {
   },
   description:
     "Talk to a live AI tutor, organize your course materials, and learn with quizzes and flashcards grounded in what you upload.",
-  icons: {
-    icon: "/learnsphere-icon.png",
-    apple: "/learnsphere-icon.png",
-  },
 };
 
 export default function RootLayout({

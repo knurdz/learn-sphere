@@ -6,6 +6,7 @@ import {
   sortLearningFeedItems,
 } from "@/lib/learning-feed";
 import { loadMemeTemplates, memeTemplateDimensions } from "@/lib/meme-generator";
+import { resolvePublicOrigin } from "@/lib/request-origin";
 import { getAuthContext } from "@/lib/supabase/server";
 import type { LearningFeedKind } from "@/lib/supabase/database";
 
@@ -160,7 +161,7 @@ export async function GET(request: NextRequest) {
         kind === "meme"
           ? await buildMemeLayout({
               payload: artifact.payload,
-              origin: request.nextUrl.origin,
+              origin: resolvePublicOrigin(request, request.nextUrl.origin),
               config: memeConfig,
             })
           : null;

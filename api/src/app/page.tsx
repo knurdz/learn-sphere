@@ -12,7 +12,7 @@ import {
   ToolsSection,
   TrustRow,
 } from "./components/landing-sections";
-import { resolveAndroidDownloadUrl } from "@/lib/github-release";
+import { ANDROID_DOWNLOAD_PATH, resolveAndroidDownloadUrl } from "@/lib/github-release";
 
 export const metadata: Metadata = {
   title: "LearnSphere — Your AI study companion",
@@ -32,8 +32,10 @@ function downloadLabel(versionLabel: string | null, short = false): string {
 }
 
 export default async function Home() {
+  // Only used for the version label; the buttons link to the redirect route so a
+  // fresh release is resolved at click time.
   const androidDownload = await resolveAndroidDownloadUrl();
-  const downloadUrl = androidDownload.url;
+  const downloadUrl = ANDROID_DOWNLOAD_PATH;
 
   return (
     <div className="landing">
