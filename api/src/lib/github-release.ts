@@ -34,6 +34,19 @@ function releaseTime(release: GitHubRelease): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+/**
+ * Version shown on the download button.
+ *
+ * The APK filename carries the app's own version, which is the number users see
+ * in the installer and in-app; the release tag can drift from it. Prefer the
+ * filename and fall back to the tag.
+ */
+export function deriveVersionLabel(assetName: string, tagName: string): string {
+  const fromAsset = assetName.match(/\d+\.\d+(?:\.\d+)?/)?.[0];
+  if (fromAsset) return fromAsset;
+  return tagName.replace(/^v/i, "");
+}
+
 export function pickLatestPublishedApkUrl(
   releases: GitHubRelease[],
 ): { url: string; versionLabel: string } | null {
@@ -44,7 +57,10 @@ export function pickLatestPublishedApkUrl(
     if (release.draft) continue;
     const apk = release.assets.find((asset) => asset.name.toLowerCase().endsWith(".apk"));
     if (apk) {
-      return { url: apk.browser_download_url, versionLabel: release.tag_name };
+      return {
+        url: apk.browser_download_url,
+        versionLabel: deriveVersionLabel(apk.name, release.tag_name),
+      };
     }
   }
   return null;

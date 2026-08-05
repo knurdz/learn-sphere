@@ -1,6 +1,6 @@
 # LearnSphere
 
-LearnSphere is a mobile-first study companion built around a **Live AI tutor** you can talk to like a real instructor—voice in, voice out, with a lip-synced video avatar on a live call. Private study spaces hold your materials; AI stays grounded in what you uploaded, not generic chat. The Flutter app (Android and iOS) is the product surface; a companion **Next.js bridge API** in [`api/`](api/) runs ingestion, retrieval, generation, and session orchestration; a **Python LiveKit worker** in [`agent/`](agent/) runs the real-time conversation loop. There is no marketing web app in this repo.
+LearnSphere is a mobile-first study companion built around a **Live AI tutor** you can talk to like a real instructor—voice in, voice out, with a lip-synced video avatar on a live call. Private study spaces hold your materials; AI stays grounded in what you uploaded, not generic chat. The Flutter app (Android and iOS) is the product surface; a companion **Next.js app** in [`api/`](api/) serves both the **bridge API** (ingestion, retrieval, generation, session orchestration) and a **public landing site** at the root domain; a **Python LiveKit worker** in [`agent/`](agent/) runs the real-time conversation loop.
 
 ---
 
@@ -192,7 +192,7 @@ flowchart TB
 |-------|--------|------|
 | Mobile | Flutter, Riverpod, go_router, Dio, l10n (24 locales) | UX, coach overlay; Supabase client + HTTPS bridge client (`API_BASE_URL`) |
 | Data | Supabase (Postgres, Storage, Auth, RLS, pgvector) | Users, profiles, materials, chunks, sessions, artifacts, `user_gamification`, `user_activity_events` |
-| Bridge | Next.js 16 standalone in Docker locally/on VM, Vitest | Orchestration, gamification recording, locale header + timezone for activity |
+| Bridge + site | Next.js 16 standalone in Docker locally/on VM, Vitest | `/api/*` orchestration and gamification recording **plus** the public landing site at `/` (marketing pages + Android download) |
 | Edge | **Caddy 2** on VM (production) | TLS, reverse proxy to bridge; long timeouts for generate/ingest |
 | Live worker | LiveKit Agents in Docker, Beyond Presence plugin | Long-running RTC session; STT/LLM/TTS from dispatch metadata |
 | Models | Groq (chat + transcription), Gemini (embeddings), LiveKit Inference (live STT/LLM/TTS), Cartesia/Inworld TTS per locale | Chosen per workload |
@@ -216,6 +216,8 @@ Local development runs **api** and **agent** with `pnpm dev` / `python agent.py 
 | Live tutor session | POST, DELETE | `/api/live-tutor/session` (POST create; DELETE `?sessionId=` clears briefing cache) |
 | Live briefing / transcript | GET, POST | `/api/live-tutor/session/[id]/briefing`, `.../transcript` |
 | Gamification | GET, PATCH | `/api/gamification/summary`, `.../analytics`, `.../tour` |
+| Health / diagnostics | GET | `/api/health` (public: config + `origin.publicOrigin`), `/api/auth/session` (validates a Bearer token) |
+| Android download | GET | `/api/download/android` (302 → newest release APK) |
 
 Authenticated routes expect the Supabase JWT. The app sends **`X-LearnSphere-Locale`** on bridge calls and **`X-Timezone`** (plus `timezone` query on some gamification GETs) so streaks and charts use the learner’s local calendar day.
 
@@ -227,7 +229,7 @@ Authenticated routes expect the Supabase JWT. The app sends **`X-LearnSphere-Loc
 
 ### 1. Bridge agent (orchestrator)
 
-The Next.js app has no UI product—it is an **orchestration layer**:
+Beyond the landing site at `/`, the Next.js app is primarily an **orchestration layer** under `/api/*`:
 
 - **Ingest agent path** — Download from Storage → format-specific extraction → sliding-window chunks → embedding batches → replace `material_chunks` for that material.
 - **Retrieval agent path** — Embed the user question as `RETRIEVAL_QUERY`, call `match_material_chunks`, filter by similarity, attach citation metadata.
@@ -427,9 +429,19 @@ flutter test
 cd api && pnpm typecheck && pnpm test
 ```
 
+## Landing website
+
+The same Next.js app that serves `/api/*` also renders a **public marketing site** at the root of the domain (**`https://learnsphere.knurdz.org/`**). It shares the bridge’s deployment—no separate host or build.
+
+- **Pages** — Hero, feature cards, “how it works”, study tools, FAQ, and an **Android download** call-to-action ([`api/src/app/page.tsx`](api/src/app/page.tsx), [`api/src/app/components/`](api/src/app/components/)).
+- **Download button** — Links to **`/api/download/android`**, which 302-redirects to the newest published release APK (or the GitHub Releases page as a fallback), so a new release is picked up without redeploying the site ([`api/src/lib/github-release.ts`](api/src/lib/github-release.ts)). Override with `ANDROID_DOWNLOAD_URL` if needed.
+- **Assets** — Landing images live in [`api/public/`](api/public/) alongside `meme-templates/`. Because Next.js **standalone** only traces files the server reads, the Docker image copies the whole `public/` folder (see [`deploy/docker/api.Dockerfile`](deploy/docker/api.Dockerfile)); otherwise landing images 404 in production while meme templates still work.
+- **Asset URLs for the app** — Feed meme images are absolute URLs. Behind Caddy the server sees plain HTTP, so the bridge derives the public origin from `PUBLIC_BASE_URL` (or `X-Forwarded-*`) to emit **https** links; verify via `curl https://learnsphere.knurdz.org/api/health` → `origin.publicOrigin`.
+- **Local preview** — `cd api && pnpm dev`, then open `http://127.0.0.1:3000/`.
+
 ## Production deployment (VM + Docker)
 
-Production runs on a **single Ubuntu VM** (e.g. Azure, ~8 GB RAM) using **Docker Compose**. The public API is **`https://learnsphere.knurdz.org`**. **Supabase**, **Groq**, **Gemini**, **LiveKit**, and **Beyond Presence** remain external—the VM only runs the **bridge API**, **live tutor worker**, and **Caddy** reverse proxy.
+Production runs on a **single Ubuntu VM** (e.g. Azure, ~8 GB RAM) using **Docker Compose**. **`https://learnsphere.knurdz.org`** serves both the **landing site** (`/`) and the **bridge API** (`/api/*`). **Supabase**, **Groq**, **Gemini**, **LiveKit**, and **Beyond Presence** remain external—the VM only runs the **bridge/site**, **live tutor worker**, and **Caddy** reverse proxy.
 
 ### DNS and domain
 
@@ -574,7 +586,9 @@ You can deploy [`api/`](api/) alone to Vercel or Cloud Run; run the live worker 
 | `lib/` | Flutter application (screens, widgets, l10n, gamification providers) |
 | `lib/l10n/` | Generated + ARB localizations (24 languages) |
 | `android/`, `ios/` | Platform projects |
-| `api/` | Next.js bridge API (no web product UI); built via `deploy/docker/api.Dockerfile` for production |
+| `api/` | Next.js app: bridge API (`/api/*`) **and** the public landing site (`/`); built via `deploy/docker/api.Dockerfile` for production |
+| `api/src/app/page.tsx`, `api/src/app/components/` | Landing website (hero, features, how-it-works, FAQ, Android download CTA) |
+| `api/public/` | Static site assets (landing images) + `meme-templates/` used by feed generation |
 | `agent/` | Python LiveKit Agents worker; built via `deploy/docker/agent.Dockerfile` for production |
 | `deploy/` | **Docker Compose**, **Caddyfile**, VM `bootstrap.sh` / `up.sh`, env examples |
 | `deploy/docker/` | Multi-stage Dockerfiles for **api** and **agent** |

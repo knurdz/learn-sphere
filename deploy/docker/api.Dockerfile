@@ -29,6 +29,9 @@ RUN apt-get update \
 
 COPY --from=builder /app/api/.next/standalone ./
 COPY --from=builder /app/api/.next/static ./api/.next/static
+# Standalone only traces files the server reads (meme templates); landing images
+# are referenced from JSX, so the whole public/ folder has to be copied.
+COPY --from=builder /app/api/public ./api/public
 
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \

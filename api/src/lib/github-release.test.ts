@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseReleaseTagsFromAtom, pickLatestPublishedApkUrl } from "./github-release";
+import {
+  deriveVersionLabel,
+  parseReleaseTagsFromAtom,
+  pickLatestPublishedApkUrl,
+} from "./github-release";
 
 describe("pickLatestPublishedApkUrl", () => {
   it("skips drafts and picks the first published release with an apk", () => {
@@ -15,7 +19,7 @@ describe("pickLatestPublishedApkUrl", () => {
         assets: [{ name: "app-release.apk", browser_download_url: "https://published.apk" }],
       },
     ]);
-    expect(url).toEqual({ url: "https://published.apk", versionLabel: "v0.1.0" });
+    expect(url).toEqual({ url: "https://published.apk", versionLabel: "0.1.0" });
   });
 
   it("picks the newest release even when the API returns them out of order", () => {
@@ -33,7 +37,19 @@ describe("pickLatestPublishedApkUrl", () => {
         assets: [{ name: "learn-sphere-v0.1.1.apk", browser_download_url: "https://new.apk" }],
       },
     ]);
-    expect(url).toEqual({ url: "https://new.apk", versionLabel: "v0.1.1" });
+    expect(url).toEqual({ url: "https://new.apk", versionLabel: "0.1.1" });
+  });
+
+  it("labels the release with the app version from the apk filename", () => {
+    // The v0.1.1 tag ships an apk still built at app version 0.1.0.
+    const url = pickLatestPublishedApkUrl([
+      {
+        tag_name: "v0.1.1",
+        draft: false,
+        assets: [{ name: "learn-sphere-0.1.0.apk", browser_download_url: "https://apk" }],
+      },
+    ]);
+    expect(url).toEqual({ url: "https://apk", versionLabel: "0.1.0" });
   });
 
   it("returns null when no published apk exists", () => {
@@ -43,6 +59,18 @@ describe("pickLatestPublishedApkUrl", () => {
         { tag_name: "v0.0.1", draft: false, assets: [{ name: "notes.txt", browser_download_url: "x" }] },
       ]),
     ).toBeNull();
+  });
+});
+
+describe("deriveVersionLabel", () => {
+  it("prefers the version in the apk filename", () => {
+    expect(deriveVersionLabel("learn-sphere-0.1.0.apk", "v0.1.1")).toBe("0.1.0");
+    expect(deriveVersionLabel("learn-sphere-v1.2.3.apk", "v1.2.3")).toBe("1.2.3");
+  });
+
+  it("falls back to the tag without its v prefix", () => {
+    expect(deriveVersionLabel("app-release.apk", "v0.1.0")).toBe("0.1.0");
+    expect(deriveVersionLabel("app-release.apk", "nightly")).toBe("nightly");
   });
 });
 

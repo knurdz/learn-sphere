@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 
 function downloadLabel(versionLabel: string | null, short = false): string {
   if (!versionLabel) return short ? "Download Android" : "Download Android APK";
-  return short ? `Download ${versionLabel}` : `Download Android (${versionLabel})`;
+  return short ? `Download ${versionLabel}` : `Download Android ${versionLabel}`;
 }
 
 export default async function Home() {
