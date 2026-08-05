@@ -1,15 +1,17 @@
 # Build context: repository root (see deploy/docker-compose.yml).
 FROM node:22-bookworm-slim AS deps
-WORKDIR /app/api
+WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
-COPY api/package.json api/pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY api/package.json ./api/
+RUN pnpm install --frozen-lockfile --filter ./api
 
 FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
-COPY --from=deps /app/api/node_modules ./api/node_modules
+COPY pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY api ./api
+RUN pnpm install --frozen-lockfile --filter ./api
 WORKDIR /app/api
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
