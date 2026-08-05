@@ -215,14 +215,25 @@ class _FloatingMascotLayer extends StatefulWidget {
 class _FloatingMascotLayerState extends State<_FloatingMascotLayer> {
   static const double _size = 68;
 
-  final ValueNotifier<Offset> _position = ValueNotifier<Offset>(Offset.zero);
+  late final ValueNotifier<Offset> _position;
   final ValueNotifier<bool> _engaged = ValueNotifier<bool>(false);
-  bool _seeded = false;
+  bool _positionReady = false;
 
   int? _activePointer;
   Offset _dragOrigin = Offset.zero;
   Offset _startPosition = Offset.zero;
   bool _dragMoved = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _position = ValueNotifier(Offset.zero);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _positionReady) return;
+      _positionReady = true;
+      _position.value = _defaultPosition(MediaQuery.sizeOf(context));
+    });
+  }
 
   @override
   void dispose() {
@@ -249,17 +260,10 @@ class _FloatingMascotLayerState extends State<_FloatingMascotLayer> {
     return Offset(next.dx.clamp(8.0, maxLeft), next.dy.clamp(topInset, maxTop));
   }
 
-  void _ensureSeeded(Size screen) {
-    if (_seeded) return;
-    _seeded = true;
-    // Assign without notifying during the first build frame.
-    _position.value = _defaultPosition(screen);
-  }
-
   void _onPointerDown(PointerDownEvent event, Size screen) {
     if (_activePointer != null) return;
-    if (!_seeded) {
-      _seeded = true;
+    if (!_positionReady) {
+      _positionReady = true;
       _position.value = _defaultPosition(screen);
     }
     _activePointer = event.pointer;
@@ -289,16 +293,7 @@ class _FloatingMascotLayerState extends State<_FloatingMascotLayer> {
     final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
     final screen = MediaQuery.sizeOf(context);
-    if (!_seeded) {
-      _seeded = true;
-      // Defer notify so we don't mark dirty during build.
-      final start = _defaultPosition(screen);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _position.value = start;
-      });
-    }
 
-    // Transform-only updates during drag — no layout rebuild of the mascot art.
     return Positioned.fill(
       child: Stack(
         clipBehavior: Clip.none,
@@ -306,14 +301,11 @@ class _FloatingMascotLayerState extends State<_FloatingMascotLayer> {
           ValueListenableBuilder<Offset>(
             valueListenable: _position,
             builder: (context, pos, child) {
-              final effective = pos == Offset.zero && !_dragMoved && _activePointer == null
-                  ? _defaultPosition(screen)
-                  : pos;
               return Positioned(
                 left: 0,
                 top: 0,
                 child: Transform.translate(
-                  offset: effective,
+                  offset: _positionReady ? pos : _defaultPosition(screen),
                   child: child,
                 ),
               );
