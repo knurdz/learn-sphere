@@ -190,11 +190,14 @@ flowchart TB
 
 | Layer | Stack | Role |
 |-------|--------|------|
-| Mobile | Flutter, Riverpod, go_router, Dio, l10n (24 locales) | UX, coach overlay, Supabase + bridge clients |
+| Mobile | Flutter, Riverpod, go_router, Dio, l10n (24 locales) | UX, coach overlay; Supabase client + HTTPS bridge client (`API_BASE_URL`) |
 | Data | Supabase (Postgres, Storage, Auth, RLS, pgvector) | Users, profiles, materials, chunks, sessions, artifacts, `user_gamification`, `user_activity_events` |
-| Bridge | Next.js 16 route handlers, Vitest | Orchestration, gamification recording, locale header + timezone for activity |
-| Live worker | LiveKit Agents, aiohttp, Beyond Presence plugin | Long-running RTC session; STT/LLM/TTS from dispatch metadata |
+| Bridge | Next.js 16 standalone in Docker locally/on VM, Vitest | Orchestration, gamification recording, locale header + timezone for activity |
+| Edge | **Caddy 2** on VM (production) | TLS, reverse proxy to bridge; long timeouts for generate/ingest |
+| Live worker | LiveKit Agents in Docker, Beyond Presence plugin | Long-running RTC session; STT/LLM/TTS from dispatch metadata |
 | Models | Groq (chat + transcription), Gemini (embeddings), LiveKit Inference (live STT/LLM/TTS), Cartesia/Inworld TTS per locale | Chosen per workload |
+
+Local development runs **api** and **agent** with `pnpm dev` / `python agent.py dev` instead of Docker; production uses [`deploy/`](deploy/). See [Production deployment (VM + Docker)](#production-deployment-vm--docker).
 
 ### Bridge API surface
 
@@ -317,7 +320,7 @@ Edit `.env.local`:
 |----------|---------|
 | `SUPABASE_URL` | Project URL |
 | `SUPABASE_ANON_KEY` | Anon/public key |
-| `API_BASE_URL` | Bridge API base URL (see phone testing below) |
+| `API_BASE_URL` | Bridge API base URL — **`https://learnsphere.knurdz.org`** in production; `http://127.0.0.1:3000` for local dev with `adb reverse` |
 
 **API (`api/`)**
 
@@ -424,71 +427,146 @@ flutter test
 cd api && pnpm typecheck && pnpm test
 ```
 
-## Production on Ubuntu VM (Docker)
+## Production deployment (VM + Docker)
 
-Production bridge + live worker run on a single Ubuntu VM (e.g. 8 GB RAM) with **Caddy** TLS at **`https://learnsphere.knurdz.org`**. Supabase stays in the cloud; the Flutter app uses that HTTPS URL as `API_BASE_URL`.
+Production runs on a **single Ubuntu VM** (e.g. Azure, ~8 GB RAM) using **Docker Compose**. The public API is **`https://learnsphere.knurdz.org`**. **Supabase**, **Groq**, **Gemini**, **LiveKit**, and **Beyond Presence** remain external—the VM only runs the **bridge API**, **live tutor worker**, and **Caddy** reverse proxy.
 
-### DNS
+### DNS and domain
 
-| Host | Type | Value |
-|------|------|--------|
-| `learnsphere.knurdz.org` | A | Your VM public IP (e.g. `20.244.109.83`) |
+| Piece | Role |
+|--------|------|
+| **Domain** | `learnsphere.knurdz.org` — hostname in `API_BASE_URL` and Let’s Encrypt |
+| **DNS** | **A record** → VM **public IPv4** (e.g. `20.244.109.83`) |
+| **Check** | `dig +short learnsphere.knurdz.org` should return the VM IP before TLS can succeed |
 
-### One-time on the VM (before bootstrap)
-
-On first run, bootstrap clones the repo and copies env **examples** into `/opt/learnsphere/env/` if missing. Edit them with real secrets, then run bootstrap again.
-
-```bash
-sudo mkdir -p /opt/learnsphere/env
-# Optional: run bootstrap once to clone and create example env files, then:
-sudo nano /opt/learnsphere/env/api.env
-sudo nano /opt/learnsphere/env/agent.env
-sudo nano /opt/learnsphere/env/compose.env   # CADDY_EMAIL for Let's Encrypt
-sudo chmod 600 /opt/learnsphere/env/*.env
-```
-
-Use the same values as local [`api/.env.local`](api/.env.local) and [`agent/.env.local`](agent/.env.local).
-
-### First deploy (one command)
-
-After env files exist on the VM:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/knurdz/learn-sphere/main/deploy/bootstrap.sh | sudo bash
-```
-
-Bootstrap installs Docker, opens UFW (22/80/443), clones [knurdz/learn-sphere](https://github.com/knurdz/learn-sphere), builds images, and starts **api**, **agent**, and **caddy**.
-
-Public API URL for releases:
+The app does **not** use the raw IP in release builds:
 
 ```text
 API_BASE_URL=https://learnsphere.knurdz.org
 ```
 
-### Redeploy after git changes
+### Virtual machine layout
 
-```bash
-sudo /opt/learnsphere/app/deploy/up.sh
+| Path | Purpose |
+|------|---------|
+| `/opt/learnsphere/app` | Git clone of [knurdz/learn-sphere](https://github.com/knurdz/learn-sphere) |
+| `/opt/learnsphere/env/api.env` | Bridge secrets (Supabase public vars, Groq, Gemini, LiveKit)—**not in git** |
+| `/opt/learnsphere/env/agent.env` | Worker secrets (LiveKit, Beyond Presence)—**not in git** |
+| `/opt/learnsphere/app/deploy/` | Compose, Caddyfile, `bootstrap.sh`, `up.sh` |
+| `/opt/learnsphere/app/deploy/.env` | `LEARNSPHERE_ENV_DIR=/opt/learnsphere/env` for Docker Compose |
+
+Open **TCP 22, 80, 443** on the cloud NSG and UFW. Details: [`deploy/FIREWALL.md`](deploy/FIREWALL.md).
+
+### Docker services (three containers)
+
+All services use the private network **`learnsphere`** ([`deploy/docker-compose.yml`](deploy/docker-compose.yml)).
+
+```mermaid
+flowchart LR
+  subgraph internet [Internet]
+    Phone[Flutter APK]
+    LK[LiveKit Cloud]
+    SB[Supabase]
+  end
+
+  subgraph vm [Ubuntu VM]
+    subgraph docker [Docker network learnsphere]
+      Caddy[Caddy :80 :443]
+      API[api Next.js :3000]
+      Agent[agent Python worker]
+    end
+  end
+
+  Phone -->|HTTPS API_BASE_URL| Caddy
+  Caddy -->|HTTP api:3000| API
+  Agent -->|http://api:3000| API
+  API --> SB
+  API --> LK
+  Agent --> LK
+  Phone --> SB
+  Phone -->|WebRTC| LK
 ```
 
-See [`deploy/FIREWALL.md`](deploy/FIREWALL.md) for inbound/outbound ports.
+| Container | Build / image | Host ports | Role |
+|-----------|---------------|------------|------|
+| **caddy** | `caddy:2-alpine` | **80**, **443** only | **HTTPS** (Let's Encrypt via ACME), HTTP→HTTPS, **gzip**, reverse proxy to `api:3000` with **300s** timeouts ([`deploy/Caddyfile`](deploy/Caddyfile)) |
+| **api** | [`deploy/docker/api.Dockerfile`](deploy/docker/api.Dockerfile) — Next.js **standalone**, Node 22 | Internal **3000** (not published) | All `/api/*` handlers; env from `/opt/learnsphere/env/api.env` |
+| **agent** | [`deploy/docker/agent.Dockerfile`](deploy/docker/agent.Dockerfile) — Python LiveKit Agents | None (outbound only) | Real-time tutor + avatar; `LEARNSPHERE_API_URL=http://api:3000`; env from `agent.env` |
+
+**Order:** `api` healthcheck passes → **agent** and **caddy** start. Certificates persist in Docker volume **`caddy_data`**.
+
+### Caddy in this stack
+
+- Binds **only** `learnsphere.knurdz.org` (see Caddyfile).
+- Obtains and renews **Let's Encrypt** certs (HTTP-01 on port 80).
+- Proxies all paths to the **api** container; long AI routes rely on **300s** proxy timeouts.
+- The **api** port is **not** exposed on the host firewall—clients always hit **443**.
+
+### How the Flutter app connects
+
+| Feature | Where it connects |
+|---------|-------------------|
+| Login, profile, Storage uploads | **Supabase** directly (`SUPABASE_URL`, anon key) |
+| Ingest, tutor, feed, tools, gamification, start live session | **HTTPS** → `API_BASE_URL` + Supabase JWT |
+| Live video / audio with avatar | **WebRTC** → **LiveKit Cloud** (token from bridge) |
+| Worker briefing / transcript | **agent** → **`http://api:3000`** on Docker network (not public) |
+
+Secrets for Groq, Gemini, LiveKit server, and Beyond never ship in the APK.
+
+### Deploy on the VM
+
+**Clone + env (first time):**
+
+```bash
+sudo mkdir -p /opt/learnsphere
+sudo git clone https://github.com/knurdz/learn-sphere.git /opt/learnsphere/app
+sudo mkdir -p /opt/learnsphere/env
+sudo cp /opt/learnsphere/app/deploy/env/api.env.example /opt/learnsphere/env/api.env
+sudo cp /opt/learnsphere/app/deploy/env/agent.env.example /opt/learnsphere/env/agent.env
+sudo nano /opt/learnsphere/env/api.env
+sudo nano /opt/learnsphere/env/agent.env
+sudo chmod 600 /opt/learnsphere/env/*.env
+```
+
+Use the same values as local [`api/.env.local`](api/.env.local) and [`agent/.env.local`](agent/.env.local).
+
+**Install Docker and start** (bootstrap clones if missing, opens UFW, builds, starts stack):
+
+```bash
+cd /opt/learnsphere/app
+sudo bash deploy/bootstrap.sh
+```
+
+One-liner on a fresh VM (after you have placed real secrets in `/opt/learnsphere/env/`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/knurdz/learn-sphere/main/deploy/bootstrap.sh | sudo bash
+```
+
+Or manually: `cd /opt/learnsphere/app/deploy && sudo docker compose up -d --build` (requires `deploy/.env` with `LEARNSPHERE_ENV_DIR`).
+
+**Verify:**
+
+```bash
+curl -sI https://learnsphere.knurdz.org
+cd /opt/learnsphere/app/deploy && sudo docker compose ps
+```
+
+**Redeploy after git changes:**
+
+```bash
+cd /opt/learnsphere/app && git pull && sudo bash deploy/up.sh
+```
+
+### Android sideload releases
+
+APKs are **not** on the Play Store. Use GitHub **Actions → Android Release** (draft APK). Add repository secrets (keystore + Supabase + `API_BASE_URL=https://learnsphere.knurdz.org`) — see [`docs/android-release.md`](docs/android-release.md). Run the workflow with a tag (e.g. `v0.1.0`), review the draft release, then publish.
+
+### Other hosts
+
+You can deploy [`api/`](api/) alone to Vercel or Cloud Run; run the live worker separately and set `LEARNSPHERE_API_URL` to the public bridge URL. The Docker stack in [`deploy/`](deploy/) is the supported path for **learnsphere.knurdz.org**.
 
 ---
-
-## Android sideload releases (GitHub Actions)
-
-APKs are **not** published to the Play Store. Use the manual workflow:
-
-1. Add repository secrets (keystore + Supabase + `API_BASE_URL=https://learnsphere.knurdz.org`) — see [`docs/android-release.md`](docs/android-release.md).
-2. **Actions → Android Release → Run workflow** with a tag (e.g. `v0.1.0`) and release notes.
-3. Open the **draft** release on GitHub, review the APK, then **Publish**.
-
----
-
-## Production API (other hosts)
-
-You can still deploy [`api/`](api/) alone to Vercel or Cloud Run; run the live worker separately and set `LEARNSPHERE_API_URL` to the public bridge URL. The Docker stack in [`deploy/`](deploy/) is the supported path for **learnsphere.knurdz.org**.
-
 ## Project layout
 
 | Path | Role |
@@ -496,9 +574,11 @@ You can still deploy [`api/`](api/) alone to Vercel or Cloud Run; run the live w
 | `lib/` | Flutter application (screens, widgets, l10n, gamification providers) |
 | `lib/l10n/` | Generated + ARB localizations (24 languages) |
 | `android/`, `ios/` | Platform projects |
-| `api/` | Next.js bridge API (no web product UI) |
-| `agent/` | Python LiveKit Agents worker for the live avatar tutor |
-| `deploy/` | Docker Compose, Caddy, VM bootstrap/up scripts |
+| `api/` | Next.js bridge API (no web product UI); built via `deploy/docker/api.Dockerfile` for production |
+| `agent/` | Python LiveKit Agents worker; built via `deploy/docker/agent.Dockerfile` for production |
+| `deploy/` | **Docker Compose**, **Caddyfile**, VM `bootstrap.sh` / `up.sh`, env examples |
+| `deploy/docker/` | Multi-stage Dockerfiles for **api** and **agent** |
+| `deploy/env/` | Example `api.env` / `agent.env` for `/opt/learnsphere/env/` on the VM |
 | `supabase/` | Database migrations and CLI config |
 | `docs/android-release.md` | Keystore + GitHub Actions APK releases |
 | `docs/screenshots/` | README marketing captures (see [`docs/screenshots/README.md`](docs/screenshots/README.md)) |
@@ -517,3 +597,7 @@ You can still deploy [`api/`](api/) alone to Vercel or Cloud Run; run the live w
 | Live tutor connects but no avatar appears | The `agent/` worker is not running, or its `LIVEKIT_*` values differ from `api/.env.local` |
 | Live tutor says LiveKit is not configured | Add `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` to `api/.env.local` |
 | Generic API **500** / Dio validateStatus | Often a **broken** Next dev server on port 3000 (stale `api/.next`). Stop all `pnpm dev` processes, then `cd api && rm -rf .next && pnpm dev`. Keep **one** API on port 3000 so it matches `API_BASE_URL=http://127.0.0.1:3000`. |
+| **Production:** HTTPS fails / connection refused | Azure (or cloud) NSG must allow **80** and **443**; `sudo docker compose ps` — **caddy** must be **Up**; check [`deploy/Caddyfile`](deploy/Caddyfile) syntax |
+| **Production:** Caddy restart loop | Usually invalid Caddyfile; use the repo version (no empty `email` line). `sudo docker compose logs caddy --tail 30` |
+| **Production:** `LEARNSPHERE_ENV_DIR` warning | Create `deploy/.env` with `LEARNSPHERE_ENV_DIR=/opt/learnsphere/env` or export before `docker compose` |
+| **Production:** API works, live tutor missing | `sudo docker compose logs agent`; match `LIVEKIT_*` in `api.env` and `agent.env`; worker must reach `http://api:3000` |

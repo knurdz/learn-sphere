@@ -1,3 +1,6 @@
+import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -6,11 +9,12 @@ plugins {
 }
 
 val keystorePropertiesFile = rootProject.file("key.properties")
-val keystoreProperties = java.util.Properties()
+val keystoreProperties = Properties()
 val hasReleaseKeystore =
-    keystorePropertiesFile.isFile &&
-        keystoreProperties.apply { keystorePropertiesFile.inputStream().use { load(it) } }
-            .getProperty("storeFile")?.isNotBlank() == true
+    keystorePropertiesFile.isFile && run {
+        keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+        keystoreProperties.getProperty("storeFile")?.isNotBlank() == true
+    }
 
 android {
     namespace = "com.learnsphere.learnsphere_mobile"
@@ -20,10 +24,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     defaultConfig {
@@ -57,6 +57,12 @@ android {
                 signingConfigs.getByName("debug")
             }
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 

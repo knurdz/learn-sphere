@@ -41,7 +41,7 @@ If `api` is healthy but **curl to the public domain fails** from anywhere, open 
 # API inside Docker (should return HTTP headers)
 sudo docker compose exec api curl -sI http://127.0.0.1:3000/
 
-# Caddy logs (if Restarting, email or config is wrong)
+# Caddy logs (if Restarting, check Caddyfile syntax)
 sudo docker compose logs caddy --tail 50
 
 # Host port 80 listening?
@@ -51,4 +51,4 @@ sudo ss -tlnp | grep -E ':80|:443'
 sudo ufw status
 ```
 
-Run `docker compose` from **`/opt/learnsphere/app/deploy`** so `deploy/.env` sets `LEARNSPHERE_ENV_DIR`. Ensure `/opt/learnsphere/env/compose.env` contains a real **`CADDY_EMAIL=you@domain.com`** (not the example placeholder).
+Run `docker compose` from **`/opt/learnsphere/app/deploy`** so `deploy/.env` sets `LEARNSPHERE_ENV_DIR`. TLS uses the site block in [`Caddyfile`](Caddyfile) (no separate `compose.env` required).
