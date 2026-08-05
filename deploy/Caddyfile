@@ -1,0 +1,14 @@
+{
+  email {$CADDY_EMAIL}
+}
+
+learnsphere.knurdz.org {
+  encode gzip
+
+  reverse_proxy api:3000 {
+    transport http {
+      read_timeout 300s
+      write_timeout 300s
+    }
+  }
+}

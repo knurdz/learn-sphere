@@ -1,0 +1,50 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/docker/api.Dockerfile
+    env_file:
+      - ${LEARNSPHERE_ENV_DIR}/api.env
+    restart: unless-stopped
+    networks:
+      - learnsphere
+
+  agent:
+    build:
+      context: ..
+      dockerfile: deploy/docker/agent.Dockerfile
+    env_file:
+      - ${LEARNSPHERE_ENV_DIR}/agent.env
+    environment:
+      LEARNSPHERE_API_URL: http://api:3000
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - learnsphere
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CADDY_EMAIL: ${CADDY_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - learnsphere
+
+networks:
+  learnsphere:
+
+volumes:
+  caddy_data:
+  caddy_config:

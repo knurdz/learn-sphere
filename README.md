@@ -424,9 +424,70 @@ flutter test
 cd api && pnpm typecheck && pnpm test
 ```
 
-## Production API
+## Production on Ubuntu VM (Docker)
 
-Deploy the [`api/`](api/) app (Vercel, Docker, etc.). Set root `.env.local` / release defines so `API_BASE_URL` is your **HTTPS** API URL. Run the live worker with `agent.py start` (see [LiveKit deployment](https://docs.livekit.io/agents/ops/deployment.md)) and point `LEARNSPHERE_API_URL` at the deployed bridge.
+Production bridge + live worker run on a single Ubuntu VM (e.g. 8 GB RAM) with **Caddy** TLS at **`https://learnsphere.knurdz.org`**. Supabase stays in the cloud; the Flutter app uses that HTTPS URL as `API_BASE_URL`.
+
+### DNS
+
+| Host | Type | Value |
+|------|------|--------|
+| `learnsphere.knurdz.org` | A | Your VM public IP (e.g. `20.244.109.83`) |
+
+### One-time on the VM (before bootstrap)
+
+On first run, bootstrap clones the repo and copies env **examples** into `/opt/learnsphere/env/` if missing. Edit them with real secrets, then run bootstrap again.
+
+```bash
+sudo mkdir -p /opt/learnsphere/env
+# Optional: run bootstrap once to clone and create example env files, then:
+sudo nano /opt/learnsphere/env/api.env
+sudo nano /opt/learnsphere/env/agent.env
+sudo nano /opt/learnsphere/env/compose.env   # CADDY_EMAIL for Let's Encrypt
+sudo chmod 600 /opt/learnsphere/env/*.env
+```
+
+Use the same values as local [`api/.env.local`](api/.env.local) and [`agent/.env.local`](agent/.env.local).
+
+### First deploy (one command)
+
+After env files exist on the VM:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/knurdz/learn-sphere/main/deploy/bootstrap.sh | sudo bash
+```
+
+Bootstrap installs Docker, opens UFW (22/80/443), clones [knurdz/learn-sphere](https://github.com/knurdz/learn-sphere), builds images, and starts **api**, **agent**, and **caddy**.
+
+Public API URL for releases:
+
+```text
+API_BASE_URL=https://learnsphere.knurdz.org
+```
+
+### Redeploy after git changes
+
+```bash
+sudo /opt/learnsphere/app/deploy/up.sh
+```
+
+See [`deploy/FIREWALL.md`](deploy/FIREWALL.md) for inbound/outbound ports.
+
+---
+
+## Android sideload releases (GitHub Actions)
+
+APKs are **not** published to the Play Store. Use the manual workflow:
+
+1. Add repository secrets (keystore + Supabase + `API_BASE_URL=https://learnsphere.knurdz.org`) — see [`docs/android-release.md`](docs/android-release.md).
+2. **Actions → Android Release → Run workflow** with a tag (e.g. `v0.1.0`) and release notes.
+3. Open the **draft** release on GitHub, review the APK, then **Publish**.
+
+---
+
+## Production API (other hosts)
+
+You can still deploy [`api/`](api/) alone to Vercel or Cloud Run; run the live worker separately and set `LEARNSPHERE_API_URL` to the public bridge URL. The Docker stack in [`deploy/`](deploy/) is the supported path for **learnsphere.knurdz.org**.
 
 ## Project layout
 
@@ -437,7 +498,9 @@ Deploy the [`api/`](api/) app (Vercel, Docker, etc.). Set root `.env.local` / re
 | `android/`, `ios/` | Platform projects |
 | `api/` | Next.js bridge API (no web product UI) |
 | `agent/` | Python LiveKit Agents worker for the live avatar tutor |
+| `deploy/` | Docker Compose, Caddy, VM bootstrap/up scripts |
 | `supabase/` | Database migrations and CLI config |
+| `docs/android-release.md` | Keystore + GitHub Actions APK releases |
 | `docs/screenshots/` | README marketing captures (see [`docs/screenshots/README.md`](docs/screenshots/README.md)) |
 
 ## Troubleshooting
