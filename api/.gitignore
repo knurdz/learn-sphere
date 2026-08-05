@@ -1,0 +1,16 @@
+# Next.js
+.next/
+out/
+node_modules/
+
+# TypeScript build info
+*.tsbuildinfo
+next-env.d.ts
+
+# Env (secrets)
+.env*
+!.env.example
+
+# Test artifacts
+test-results/
+playwright-report/

@@ -25,6 +25,14 @@ class _CoachOverlayState extends ConsumerState<CoachOverlay> {
   /// Hides tour scrim + auto-open panel until the user taps Sphere again.
   bool _tourUiDismissed = false;
 
+  final ValueNotifier<Offset> _mascotPosition = ValueNotifier(Offset.zero);
+
+  @override
+  void dispose() {
+    _mascotPosition.dispose();
+    super.dispose();
+  }
+
   void _closeMessagePanel({required bool tourActive}) {
     setState(() {
       _bubbleOpen = false;
@@ -84,7 +92,6 @@ class _CoachOverlayState extends ConsumerState<CoachOverlay> {
     final tourKeys = CoachTourScope.maybeOf(context);
 
     final media = MediaQuery.of(context);
-    final bottomInset = media.padding.bottom + kBottomNavigationBarHeight + 12;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -92,6 +99,7 @@ class _CoachOverlayState extends ConsumerState<CoachOverlay> {
         widget.child,
         // Self-contained: drag updates a ValueNotifier only — no parent setState.
         _FloatingMascotLayer(
+          positionListenable: _mascotPosition,
           onTap: () {
             setState(() {
               if (tourActive) {
@@ -106,23 +114,36 @@ class _CoachOverlayState extends ConsumerState<CoachOverlay> {
         if (showTourScrim && tourKeys != null)
           Positioned.fill(child: CoachTourOverlay(keys: tourKeys)),
         if (showPanel)
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: bottomInset + 88,
-            child: CoachBubble(
-              message: message,
-              compact: true,
-              onDismiss: () => _closeMessagePanel(tourActive: tourActive),
-              primaryActionLabel: tourActive
-                  ? (tourStep == 'welcome' ? 'Start tour' : 'Next')
-                  : null,
-              onPrimaryAction: tourActive ? () => _advanceTour(tourStep) : null,
-              primaryActionBusy: _tourBusy,
-              secondaryActionLabel: tourActive ? l10n.coachSkipTour : null,
-              onSecondaryAction: tourActive ? _skipTour : null,
-              secondaryActionBusy: _tourBusy,
-            ),
+          ValueListenableBuilder<Offset>(
+            valueListenable: _mascotPosition,
+            builder: (context, pos, _) {
+              final screen = media.size;
+              const mascotSize = _FloatingMascotLayer.mascotSize;
+              final effectivePos = pos == Offset.zero
+                  ? _FloatingMascotLayerState.defaultPosition(screen, media.padding)
+                  : pos;
+              const gap = 12.0;
+              final mascotOnRight = effectivePos.dx > screen.width * 0.5;
+
+              return Positioned(
+                top: effectivePos.dy,
+                left: mascotOnRight ? 16 : effectivePos.dx + mascotSize + gap,
+                right: mascotOnRight ? screen.width - effectivePos.dx + gap : 16,
+                child: CoachBubble(
+                  message: message,
+                  compact: true,
+                  onDismiss: () => _closeMessagePanel(tourActive: tourActive),
+                  primaryActionLabel: tourActive
+                      ? (tourStep == 'welcome' ? 'Start tour' : 'Next')
+                      : null,
+                  onPrimaryAction: tourActive ? () => _advanceTour(tourStep) : null,
+                  primaryActionBusy: _tourBusy,
+                  secondaryActionLabel: tourActive ? l10n.coachSkipTour : null,
+                  onSecondaryAction: tourActive ? _skipTour : null,
+                  secondaryActionBusy: _tourBusy,
+                ),
+              );
+            },
           ),
       ],
     );
@@ -204,8 +225,14 @@ class _CoachOverlayState extends ConsumerState<CoachOverlay> {
 }
 
 class _FloatingMascotLayer extends StatefulWidget {
-  const _FloatingMascotLayer({required this.onTap});
+  const _FloatingMascotLayer({
+    required this.positionListenable,
+    required this.onTap,
+  });
 
+  static const double mascotSize = 68;
+
+  final ValueNotifier<Offset> positionListenable;
   final VoidCallback onTap;
 
   @override
@@ -213,11 +240,19 @@ class _FloatingMascotLayer extends StatefulWidget {
 }
 
 class _FloatingMascotLayerState extends State<_FloatingMascotLayer> {
-  static const double _size = 68;
+  static const double _size = _FloatingMascotLayer.mascotSize;
 
-  late final ValueNotifier<Offset> _position;
+  ValueNotifier<Offset> get _position => widget.positionListenable;
   final ValueNotifier<bool> _engaged = ValueNotifier<bool>(false);
   bool _positionReady = false;
+
+  static Offset defaultPosition(Size screen, EdgeInsets padding) {
+    final bottomInset = padding.bottom + kBottomNavigationBarHeight + 12;
+    final topInset = padding.top + 8;
+    final maxLeft = screen.width - _size - 8;
+    final maxTop = screen.height - bottomInset - _size - 8;
+    return Offset((maxLeft - 12).clamp(8.0, maxLeft), (maxTop - 100).clamp(topInset, maxTop));
+  }
 
   int? _activePointer;
   Offset _dragOrigin = Offset.zero;
@@ -227,28 +262,17 @@ class _FloatingMascotLayerState extends State<_FloatingMascotLayer> {
   @override
   void initState() {
     super.initState();
-    _position = ValueNotifier(Offset.zero);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _positionReady) return;
       _positionReady = true;
-      _position.value = _defaultPosition(MediaQuery.sizeOf(context));
+      _position.value = defaultPosition(MediaQuery.sizeOf(context), MediaQuery.paddingOf(context));
     });
   }
 
   @override
   void dispose() {
-    _position.dispose();
     _engaged.dispose();
     super.dispose();
-  }
-
-  Offset _defaultPosition(Size screen) {
-    final padding = MediaQuery.paddingOf(context);
-    final bottomInset = padding.bottom + kBottomNavigationBarHeight + 12;
-    final topInset = padding.top + 8;
-    final maxLeft = screen.width - _size - 8;
-    final maxTop = screen.height - bottomInset - _size - 8;
-    return Offset((maxLeft - 12).clamp(8.0, maxLeft), (maxTop - 100).clamp(topInset, maxTop));
   }
 
   Offset _clamp(Offset next, Size screen) {
@@ -264,7 +288,7 @@ class _FloatingMascotLayerState extends State<_FloatingMascotLayer> {
     if (_activePointer != null) return;
     if (!_positionReady) {
       _positionReady = true;
-      _position.value = _defaultPosition(screen);
+      _position.value = defaultPosition(screen, MediaQuery.paddingOf(context));
     }
     _activePointer = event.pointer;
     _dragMoved = false;
@@ -305,7 +329,9 @@ class _FloatingMascotLayerState extends State<_FloatingMascotLayer> {
                 left: 0,
                 top: 0,
                 child: Transform.translate(
-                  offset: _positionReady ? pos : _defaultPosition(screen),
+                  offset: _positionReady
+                      ? pos
+                      : defaultPosition(screen, MediaQuery.paddingOf(context)),
                   child: child,
                 ),
               );

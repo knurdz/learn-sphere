@@ -1,14 +1,20 @@
 # Flutter / Dart
 .dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
 .packages
 .pub/
 /build/
+/coverage/
 /ios/Pods/
 /ios/.symlinks/
 /android/.gradle/
 /android/local.properties
+/android/.kotlin/
 *.iml
 .idea/
+.vscode/
+*.log
 
 # Node (api/)
 api/node_modules/
@@ -23,7 +29,6 @@ agent/.venv/
 __pycache__/
 
 # testing
-/coverage
 api/test-results/
 api/playwright-report/
 
@@ -41,6 +46,10 @@ yarn-error.log*
 .env*
 !.env.example
 !**/.env.example
+
+# Supabase CLI (see also supabase/.gitignore)
+supabase/.branches/
+supabase/.temp/
 
 # vercel
 .vercel
