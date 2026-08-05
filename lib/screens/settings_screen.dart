@@ -1,0 +1,384 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:dice_bear/dice_bear.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../auth_controller.dart';
+import '../avatar_utils.dart';
+import '../profile_repository.dart';
+import '../settings_provider.dart';
+import '../widgets/user_avatar.dart';
+
+class SettingsScreen extends ConsumerStatefulWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  bool _avatarBusy = false;
+  String? _avatarError;
+
+  Future<void> _pickPhoto() async {
+    setState(() {
+      _avatarBusy = true;
+      _avatarError = null;
+    });
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
+      final file = result?.files.single;
+      if (file == null) return;
+      await ref.read(profileProvider.notifier).uploadAvatar(file);
+    } catch (error) {
+      if (mounted) setState(() => _avatarError = '$error');
+    } finally {
+      if (mounted) setState(() => _avatarBusy = false);
+    }
+  }
+
+  Future<void> _pickDiceBear(DiceBearStyle style) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+    setState(() {
+      _avatarBusy = true;
+      _avatarError = null;
+    });
+    try {
+      final url = diceBearAvatarUrl(seed: '$userId-${style.name}', style: style);
+      await ref.read(profileProvider.notifier).setAvatarUrl(url);
+    } catch (error) {
+      if (mounted) setState(() => _avatarError = '$error');
+    } finally {
+      if (mounted) setState(() => _avatarBusy = false);
+    }
+  }
+
+  Future<void> _signOut() async {
+    await ref.read(authControllerProvider.notifier).signOut();
+    if (mounted) context.go('/login');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+    final profile = ref.watch(profileProvider);
+    final theme = Theme.of(context);
+    final user = Supabase.instance.client.auth.currentUser;
+    final googlePhoto = user != null ? googlePhotoFromUser(user) : null;
+    final showGoogleRestore = googlePhoto != null && userSignedInWithGoogle(user!);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Settings'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: FilledButton.tonalIcon(
+              onPressed: () => context.push('/progress'),
+              icon: const Icon(Icons.analytics_outlined, size: 18),
+              label: const Text('Analytics'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                minimumSize: const Size(0, 36),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 8),
+            child: Text('ACCOUNT', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: theme.colorScheme.primary, letterSpacing: 1.2)),
+          ),
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+              side: BorderSide(color: theme.colorScheme.outline.withValues(alpha: 0.15)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const UserAvatar(radius: 36, showRing: true),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              profile.valueOrNull?.displayName ?? 'Student',
+                              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            if (user?.email != null)
+                              Text(
+                                user!.email!,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_avatarError != null) ...[
+                    const SizedBox(height: 16),
+                    Text(_avatarError!, style: TextStyle(color: theme.colorScheme.error)),
+                  ],
+                  const SizedBox(height: 24),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      FilledButton.tonalIcon(
+                        onPressed: _avatarBusy ? null : _pickPhoto,
+                        icon: _avatarBusy
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.upload_outlined, size: 20),
+                        label: const Text('Upload photo'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(0, 44),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                        ),
+                      ),
+                      if (showGoogleRestore)
+                        OutlinedButton.icon(
+                          onPressed: _avatarBusy
+                              ? null
+                              : () => ref.read(profileProvider.notifier).useGooglePhoto(),
+                          icon: const Icon(Icons.account_circle_outlined, size: 20),
+                          label: const Text('Use Google photo'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 44),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Choose an avatar',
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 64,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: pickableAvatarStyles.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 12),
+                      itemBuilder: (context, index) {
+                        final style = pickableAvatarStyles[index];
+                        final userId = user?.id ?? 'guest';
+                        final previewUrl = diceBearAvatarUrl(seed: '$userId-${style.name}', style: style, size: 128);
+                        return InkWell(
+                          onTap: _avatarBusy ? null : () => _pickDiceBear(style),
+                          borderRadius: BorderRadius.circular(32),
+                          child: CircleAvatar(
+                            radius: 32,
+                            backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                            child: ClipOval(
+                              child: CachedNetworkImage(
+                                imageUrl: previewUrl,
+                                width: 64,
+                                height: 64,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 32),
+          Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 8),
+            child: Text('APPEARANCE', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: theme.colorScheme.primary, letterSpacing: 1.2)),
+          ),
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+              side: BorderSide(color: theme.colorScheme.outline.withValues(alpha: 0.15)),
+            ),
+            child: Column(
+              children: [
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.brightness_6_outlined, color: theme.colorScheme.primary),
+                  ),
+                  title: const Text('Theme Mode', style: TextStyle(fontWeight: FontWeight.w600)),
+                  trailing: DropdownButton<AppThemeMode>(
+                    value: settings.themeMode,
+                    underline: const SizedBox(),
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                    borderRadius: BorderRadius.circular(16),
+                    items: const [
+                      DropdownMenuItem(value: AppThemeMode.system, child: Text('System')),
+                      DropdownMenuItem(value: AppThemeMode.light, child: Text('Light')),
+                      DropdownMenuItem(value: AppThemeMode.dark, child: Text('Dark')),
+                    ],
+                    onChanged: (mode) {
+                      if (mode != null) {
+                        ref.read(settingsProvider.notifier).setThemeMode(mode);
+                      }
+                    },
+                  ),
+                ),
+                Divider(height: 1, color: theme.colorScheme.outline.withValues(alpha: 0.1)),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.palette_outlined, color: theme.colorScheme.primary),
+                  ),
+                  title: const Text('Color Theme', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Wrap(
+                      spacing: 12,
+                      children: [
+                        _ColorOption(color: 0xFF059669, selected: settings.colorTheme == 0xFF059669),
+                        _ColorOption(color: 0xFF2563EB, selected: settings.colorTheme == 0xFF2563EB),
+                        _ColorOption(color: 0xFF7C3AED, selected: settings.colorTheme == 0xFF7C3AED),
+                        _ColorOption(color: 0xFFDB2777, selected: settings.colorTheme == 0xFFDB2777),
+                        _ColorOption(color: 0xFFEA580C, selected: settings.colorTheme == 0xFFEA580C),
+                      ],
+                    ),
+                  ),
+                ),
+                Divider(height: 1, color: theme.colorScheme.outline.withValues(alpha: 0.1)),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.style_outlined, color: theme.colorScheme.primary),
+                  ),
+                  title: const Text('Card Tone', style: TextStyle(fontWeight: FontWeight.w600)),
+                  trailing: DropdownButton<AppCardTone>(
+                    value: settings.cardTone,
+                    underline: const SizedBox(),
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                    borderRadius: BorderRadius.circular(16),
+                    items: const [
+                      DropdownMenuItem(value: AppCardTone.defaultTone, child: Text('Default')),
+                      DropdownMenuItem(value: AppCardTone.colorful, child: Text('Colorful')),
+                      DropdownMenuItem(value: AppCardTone.single, child: Text('Single Tone')),
+                    ],
+                    onChanged: (tone) {
+                      if (tone != null) {
+                        ref.read(settingsProvider.notifier).setCardTone(tone);
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 32),
+          Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 8),
+            child: Text('ABOUT', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: theme.colorScheme.primary, letterSpacing: 1.2)),
+          ),
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+              side: BorderSide(color: theme.colorScheme.outline.withValues(alpha: 0.15)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 18),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.code, size: 28, color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Designed and developed by',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Team Knurdz Neural',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 40),
+          FilledButton.icon(
+            onPressed: _signOut,
+            icon: const Icon(Icons.logout_outlined),
+            label: const Text('Sign out'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade600,
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(56),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+}
+
+class _ColorOption extends ConsumerWidget {
+  const _ColorOption({required this.color, required this.selected});
+
+  final int color;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return GestureDetector(
+      onTap: () => ref.read(settingsProvider.notifier).setColorTheme(color),
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: Color(color),
+          shape: BoxShape.circle,
+          border: selected ? Border.all(color: Theme.of(context).colorScheme.onSurface, width: 2) : null,
+        ),
+        child: selected ? const Icon(Icons.check, size: 16, color: Colors.white) : null,
+      ),
+    );
+  }
+}

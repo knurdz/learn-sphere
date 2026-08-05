@@ -1,0 +1,3 @@
+livekit-agents[bey]~=1.5
+python-dotenv~=1.0
+aiohttp~=3.10
