@@ -69,3 +69,17 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+afterEvaluate {
+    tasks.named("assembleRelease").configure {
+        doLast {
+            val versionName = android.defaultConfig.versionName ?: "unknown"
+            val apkDir = layout.buildDirectory.get().asFile.resolve("outputs/flutter-apk")
+            val defaultApk = apkDir.resolve("app-release.apk")
+            val brandedApk = apkDir.resolve("learn-sphere-$versionName.apk")
+            if (defaultApk.isFile) {
+                defaultApk.copyTo(brandedApk, overwrite = true)
+            }
+        }
+    }
+}

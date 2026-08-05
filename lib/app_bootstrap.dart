@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'app_config.dart';
+import 'auth_session.dart';
 import 'settings_provider.dart';
 import 'widgets/learnsphere_loading_splash.dart';
 
@@ -46,13 +46,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
 
     final config = readAppConfig();
     if (config.isConfigured) {
-      await Supabase.initialize(
-        url: config.supabaseUrl,
-        anonKey: config.supabaseAnonKey,
-        authOptions: const FlutterAuthClientOptions(
-          authFlowType: AuthFlowType.pkce,
-        ),
-      );
+      await initializeSupabaseAuth(config, prefs);
     }
 
     return _BootstrapData(prefs);

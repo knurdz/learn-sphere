@@ -88,6 +88,18 @@ jobs:
       - name: Build release APK
         run: flutter build apk --release
 
+      - name: Resolve release APK path
+        id: apk
+        run: |
+          VERSION="$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)"
+          APK="build/app/outputs/flutter-apk/learn-sphere-${VERSION}.apk"
+          if [[ ! -f "${APK}" ]]; then
+            echo "Expected ${APK} not found"
+            ls -la build/app/outputs/flutter-apk/ || true
+            exit 1
+          fi
+          echo "path=${APK}" >> "$GITHUB_OUTPUT"
+
       - name: Create draft GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -100,5 +112,5 @@ jobs:
             Built from commit ${{ github.sha }}.
             Version from pubspec.yaml. Install the APK on Android (sideload); not published to Play Store.
           draft: true
-          files: build/app/outputs/flutter-apk/app-release.apk
+          files: ${{ steps.apk.outputs.path }}
           generate_release_notes: false

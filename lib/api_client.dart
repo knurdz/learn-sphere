@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app_config.dart';
+import 'auth_session.dart';
 import 'device_timezone.dart';
 import 'gamification_models.dart';
 import 'models.dart';
@@ -31,20 +32,53 @@ class BridgeApi {
             receiveTimeout: const Duration(seconds: 90),
             headers: const {'Accept': 'application/json'},
           ),
-        );
+        ) {
+    _dio.interceptors.add(
+      dio.InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          await _applyAuthHeaders(options);
+          handler.next(options);
+        },
+        onError: (error, handler) async {
+          if (error.response?.statusCode == 401 && error.requestOptions.extra['authRetried'] != true) {
+            try {
+              await refreshSessionIfNeeded(supabase, force: true);
+              final retry = error.requestOptions;
+              retry.extra['authRetried'] = true;
+              await _applyAuthHeaders(retry);
+              handler.resolve(await _dio.fetch(retry));
+              return;
+            } catch (_) {}
+          }
+          handler.next(error);
+        },
+      ),
+    );
+  }
 
   final dio.Dio _dio;
   final SupabaseClient supabase;
   final String locale;
   final String timezone;
 
-  dio.Options _options({String? contentType, String? timezoneOverride}) {
+  Future<void> _applyAuthHeaders(dio.RequestOptions options) async {
+    await refreshSessionIfNeeded(supabase);
     final token = supabase.auth.currentSession?.accessToken;
+    options.headers['Accept'] = 'application/json';
+    options.headers[_localeHeader] = locale;
+    options.headers[_timezoneHeader] = timezone;
+    if (token != null && token.isNotEmpty) {
+      options.headers['Authorization'] = 'Bearer $token';
+    } else {
+      options.headers.remove('Authorization');
+    }
+  }
+
+  dio.Options _options({String? contentType, String? timezoneOverride}) {
     final tz = timezoneOverride ?? timezone;
     return dio.Options(
       contentType: contentType,
       headers: {
-        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
         _localeHeader: locale,
         _timezoneHeader: tz,
       },
@@ -92,6 +126,13 @@ class BridgeApi {
       String message;
       if (data is Map && data['error'] != null) {
         message = '${data['error']}';
+        if (error.response?.statusCode == 401) {
+          message =
+              '$message Sign out and sign in again. If this persists, the release APK and server must use the same Supabase project.';
+        }
+      } else if (error.response?.statusCode == 401) {
+        message =
+            'Session expired or invalid. Sign out and sign in again. If this persists, confirm API_BASE_URL and Supabase settings match production.';
       } else if (error.response?.statusCode == 500) {
         message =
             'API server error (500). Stop other dev servers, then run: cd api && rm -rf .next && pnpm dev';

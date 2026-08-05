@@ -29,7 +29,7 @@ flutter pub get
 flutter build apk --release
 ```
 
-Output: `build/app/outputs/flutter-apk/app-release.apk`
+Output: `build/app/outputs/flutter-apk/learn-sphere-<version>.apk` (e.g. `learn-sphere-0.1.0.apk` from `pubspec.yaml` `version:`). Flutter also writes `app-release.apk` in the same folder.
 
 ## GitHub repository secrets
 
@@ -45,6 +45,8 @@ Settings → Secrets and variables → Actions:
 | `SUPABASE_ANON_KEY` | Production anon key |
 | `API_BASE_URL` | `https://learnsphere.knurdz.org` |
 
+These must match **`NEXT_PUBLIC_SUPABASE_URL`** and **`NEXT_PUBLIC_SUPABASE_ANON_KEY`** on the VM (`/opt/learnsphere/env/api.env`). A mismatch causes “Authentication required” on Feed/Library even when Supabase sign-in looks fine.
+
 ## Create a draft release
 
 1. GitHub → **Actions** → **Android Release** → **Run workflow**.
@@ -55,6 +57,6 @@ Version **name/code** come from `pubspec.yaml` (`version: x.y.z+build`).
 
 ## Install on a device
 
-1. Download `app-release.apk` from the release.
-2. Enable install from unknown sources (or use `adb install -r app-release.apk`).
+1. Download `learn-sphere-<version>.apk` from the release.
+2. Enable install from unknown sources (or use `adb install -r learn-sphere-0.1.0.apk`).
 3. Ensure the device can reach `https://learnsphere.knurdz.org` and Supabase.
