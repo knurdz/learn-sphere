@@ -4,7 +4,7 @@ services:
       context: ..
       dockerfile: deploy/docker/api.Dockerfile
     env_file:
-      - ${LEARNSPHERE_ENV_DIR}/api.env
+      - ${LEARNSPHERE_ENV_DIR:-/opt/learnsphere/env}/api.env
     restart: unless-stopped
     networks:
       - learnsphere
@@ -14,7 +14,7 @@ services:
       context: ..
       dockerfile: deploy/docker/agent.Dockerfile
     env_file:
-      - ${LEARNSPHERE_ENV_DIR}/agent.env
+      - ${LEARNSPHERE_ENV_DIR:-/opt/learnsphere/env}/agent.env
     environment:
       LEARNSPHERE_API_URL: http://api:3000
     depends_on:
@@ -29,6 +29,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    env_file:
+      - ${LEARNSPHERE_ENV_DIR:-/opt/learnsphere/env}/compose.env
     environment:
       CADDY_EMAIL: ${CADDY_EMAIL:-}
     volumes:

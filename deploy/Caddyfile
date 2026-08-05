@@ -1,4 +1,5 @@
 {
+  # CADDY_EMAIL must be set in /opt/learnsphere/env/compose.env (loaded via env_file).
   email {$CADDY_EMAIL}
 }
 

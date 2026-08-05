@@ -31,6 +31,24 @@ LiveKit / WebRTC from the **agent** container may also need **outbound UDP** (ST
 - Flutter app → **LiveKit** media (direct from phone).
 - Phones only need **`https://learnsphere.knurdz.org`** for the bridge API.
 
-## DNS
+## Azure / cloud NSG
 
-`learnsphere.knurdz.org` A record → your VM public IP (e.g. `20.244.109.83`) before running bootstrap.
+If `api` is healthy but **curl to the public domain fails** from anywhere, open **inbound TCP 80 and 443** in your cloud network security group (e.g. Azure NSG on the VM NIC or subnet), in addition to UFW on the VM.
+
+## Quick checks on the VM
+
+```bash
+# API inside Docker (should return HTTP headers)
+sudo docker compose exec api curl -sI http://127.0.0.1:3000/
+
+# Caddy logs (if Restarting, email or config is wrong)
+sudo docker compose logs caddy --tail 50
+
+# Host port 80 listening?
+sudo ss -tlnp | grep -E ':80|:443'
+
+# UFW
+sudo ufw status
+```
+
+Run `docker compose` from **`/opt/learnsphere/app/deploy`** so `deploy/.env` sets `LEARNSPHERE_ENV_DIR`. Ensure `/opt/learnsphere/env/compose.env` contains a real **`CADDY_EMAIL=you@domain.com`** (not the example placeholder).
