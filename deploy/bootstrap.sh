@@ -78,10 +78,6 @@ load_compose_env() {
     source "${LEARNSPHERE_ENV_DIR}/compose.env"
     set +a
   fi
-  if [[ -z "${CADDY_EMAIL}" || "${CADDY_EMAIL}" == "you@example.com" ]]; then
-    echo "Set a real CADDY_EMAIL in ${LEARNSPHERE_ENV_DIR}/compose.env for Let's Encrypt."
-    exit 1
-  fi
 }
 
 clone_or_update() {
@@ -107,7 +103,6 @@ clone_or_update() {
 
 compose_up() {
   export LEARNSPHERE_ENV_DIR
-  export CADDY_EMAIL
   cd "${LEARNSPHERE_APP_DIR}/deploy"
   docker compose up -d --build
   docker compose ps
