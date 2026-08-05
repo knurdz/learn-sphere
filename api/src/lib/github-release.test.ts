@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickLatestPublishedApkUrl } from "./github-release";
+import { parseReleaseTagsFromAtom, pickLatestPublishedApkUrl } from "./github-release";
 
 describe("pickLatestPublishedApkUrl", () => {
   it("skips drafts and picks the first published release with an apk", () => {
@@ -43,5 +43,29 @@ describe("pickLatestPublishedApkUrl", () => {
         { tag_name: "v0.0.1", draft: false, assets: [{ name: "notes.txt", browser_download_url: "x" }] },
       ]),
     ).toBeNull();
+  });
+});
+
+describe("parseReleaseTagsFromAtom", () => {
+  it("returns tags newest-first without duplicates", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+      <feed xmlns="http://www.w3.org/2005/Atom">
+        <entry>
+          <id>tag:github.com,2008:Repository/1324098545/v0.1.1</id>
+          <link rel="alternate" type="text/html" href="https://github.com/knurdz/learn-sphere/releases/tag/v0.1.1"/>
+        </entry>
+        <entry>
+          <id>tag:github.com,2008:Repository/1324098545/v0.1.0</id>
+          <link rel="alternate" type="text/html" href="https://github.com/knurdz/learn-sphere/releases/tag/v0.1.0"/>
+        </entry>
+      </feed>`;
+
+    expect(parseReleaseTagsFromAtom(xml)).toEqual(["v0.1.1", "v0.1.0"]);
+  });
+
+  it("decodes escaped tag names and tolerates junk", () => {
+    const xml = `<link href="https://github.com/o/r/releases/tag/release%2F2026-08-05"/>`;
+    expect(parseReleaseTagsFromAtom(xml)).toEqual(["release/2026-08-05"]);
+    expect(parseReleaseTagsFromAtom("not xml at all")).toEqual([]);
   });
 });
