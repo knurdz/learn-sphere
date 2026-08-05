@@ -1,19 +1,17 @@
 import type { Metadata } from "next";
-import {
-  FeaturesExperience,
-  HowItWorksSection,
-} from "./components/landing-experience";
 import { HeroShowcase } from "./components/hero-showcase";
 import { LandingNav } from "./components/landing-nav";
+import { FaqSection } from "./components/landing-faq";
 import {
+  AboutSection,
   DownloadCtaSection,
+  FeatureCardsSection,
+  HowItWorksSection,
   MarqueeSection,
   SiteFooter,
-  StatsSection,
-  TestimonialsSection,
+  ToolsSection,
   TrustRow,
 } from "./components/landing-sections";
-import { FaqSection } from "./components/landing-faq";
 import { resolveAndroidDownloadUrl } from "@/lib/github-release";
 
 export const metadata: Metadata = {
@@ -29,8 +27,8 @@ export const metadata: Metadata = {
 };
 
 function downloadLabel(versionLabel: string | null, short = false): string {
-  if (!versionLabel) return short ? "Download" : "Download Android APK";
-  return short ? "Download" : `Download Android (${versionLabel})`;
+  if (!versionLabel) return short ? "Download Android" : "Download Android APK";
+  return short ? `Download ${versionLabel}` : `Download Android (${versionLabel})`;
 }
 
 export default async function Home() {
@@ -39,58 +37,29 @@ export default async function Home() {
 
   return (
     <div className="landing">
-      <div className="hero-panel" id="hero">
-        <div className="hero-panel-bg" aria-hidden />
-        <div className="landing-shell hero-panel-inner">
+      <div className="landing-glow landing-glow--tl" aria-hidden />
+      <div className="landing-glow landing-glow--br" aria-hidden />
+
+      <div className="landing-shell">
+        <div id="hero" className="hero">
           <LandingNav downloadUrl={downloadUrl} />
-
-          <div className="hero-copy">
-            <h1 className="hero-title">
-              Learn <span className="hero-highlight">Beyond</span> generic chat. Study{" "}
-              <span className="hero-highlight">Together</span> with your materials.
-            </h1>
-            <p className="hero-sub">
-              LearnSphere is a mobile study companion: live video tutor with a lip-synced avatar,
-              RAG-grounded chat and voice, a swipeable learning feed, video-bound study tools,
-              and Sphere—your coach for streaks, XP, and daily goals. All scoped to study spaces
-              you control.
-            </p>
-          </div>
-
-          <HeroShowcase />
-
-          <div className="hero-cta-block">
-            <a className="btn btn-hero-cta" href={downloadUrl}>
-              {downloadLabel(androidDownload.versionLabel, true)}
-              <span className="btn-hero-cta-arrow" aria-hidden>
-                →
-              </span>
-            </a>
-            <p className="hero-platforms">
-              <strong>Android</strong> available now · <span>iOS & Web coming soon</span>
-            </p>
-          </div>
-
-          <MarqueeSection />
-          <TrustRow />
+          <HeroShowcase downloadUrl={downloadUrl} />
         </div>
       </div>
 
+      <MarqueeSection />
+
       <div className="landing-shell landing-main">
-        <StatsSection />
-
-        <FeaturesExperience />
+        <TrustRow />
+        <FeatureCardsSection />
+        <AboutSection />
         <HowItWorksSection />
-
-        <TestimonialsSection />
-
+        <ToolsSection />
         <FaqSection />
-
         <DownloadCtaSection
           downloadUrl={downloadUrl}
           downloadLabel={downloadLabel(androidDownload.versionLabel)}
         />
-
         <SiteFooter />
       </div>
     </div>

@@ -88,16 +88,20 @@ jobs:
       - name: Build release APK
         run: flutter build apk --release
 
-      - name: Resolve release APK path
+      - name: Brand release APK
         id: apk
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          VERSION="$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)"
-          APK="build/app/outputs/flutter-apk/learn-sphere-${VERSION}.apk"
-          if [[ ! -f "${APK}" ]]; then
-            echo "Expected ${APK} not found"
+          SRC="build/app/outputs/flutter-apk/app-release.apk"
+          SAFE_TAG="${RELEASE_TAG//\//-}"
+          APK="build/app/outputs/flutter-apk/learn-sphere-${SAFE_TAG}.apk"
+          if [[ ! -f "${SRC}" ]]; then
+            echo "Expected ${SRC} not found"
             ls -la build/app/outputs/flutter-apk/ || true
             exit 1
           fi
+          cp "${SRC}" "${APK}"
           echo "path=${APK}" >> "$GITHUB_OUTPUT"
 
       - name: Create draft GitHub Release
@@ -110,7 +114,7 @@ jobs:
 
             ---
             Built from commit ${{ github.sha }}.
-            Version from pubspec.yaml. Install the APK on Android (sideload); not published to Play Store.
+            APK: `learn-sphere-${{ inputs.release_tag }}.apk` (same version as this release tag). Install on Android (sideload); not published to Play Store.
           draft: true
           files: ${{ steps.apk.outputs.path }}
           generate_release_notes: false

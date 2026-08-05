@@ -601,3 +601,4 @@ You can deploy [`api/`](api/) alone to Vercel or Cloud Run; run the live worker 
 | **Production:** Caddy restart loop | Usually invalid Caddyfile; use the repo version (no empty `email` line). `sudo docker compose logs caddy --tail 30` |
 | **Production:** `LEARNSPHERE_ENV_DIR` warning | Create `deploy/.env` with `LEARNSPHERE_ENV_DIR=/opt/learnsphere/env` or export before `docker compose` |
 | **Production:** API works, live tutor missing | `sudo docker compose logs agent`; match `LIVEKIT_*` in `api.env` and `agent.env`; worker must reach `http://api:3000` |
+| **Production:** Feed/Library **401** / auth errors | [`deploy/AUTH-CHECK.md`](deploy/AUTH-CHECK.md): `curl …/api/health`, align `SUPABASE_*` in VM `api.env` with GitHub APK secrets; test `…/api/auth/session` with a Bearer token |

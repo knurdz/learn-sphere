@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { PhoneMockup } from "./phone-mockup";
 
-const marqueeWords = ["Feed", "Live Tutor", "RAG", "Sphere", "Study Tools", "Study Spaces"];
+const marqueeWords = ["Study", "Tutor", "Feed", "RAG", "Sphere", "Practice"];
 
 export function MarqueeSection() {
   return (
@@ -12,7 +12,7 @@ export function MarqueeSection() {
             {marqueeWords.map((word) => (
               <span key={`${copy}-${word}`} className="marquee-word">
                 {word}
-                <span className="marquee-dot">✳</span>
+                <span className="marquee-star">✦</span>
               </span>
             ))}
           </div>
@@ -25,100 +25,201 @@ export function MarqueeSection() {
 export function TrustRow() {
   const subjects = ["Chemistry", "Calculus", "Biology", "History", "Languages", "Physics"];
   return (
-    <div className="trust-row">
-      <p className="trust-row-label">Built for every course, in 24 languages</p>
-      <div className="trust-row-pills">
+    <section className="trust-section">
+      <p className="trust-heading">Built for every course you study</p>
+      <div className="trust-logos">
         {subjects.map((s) => (
-          <span key={s} className="trust-pill">
+          <span key={s} className="trust-logo">
             {s}
           </span>
         ))}
-      </div>
-    </div>
-  );
-}
-
-const stats = [
-  { value: "24+", label: "UI languages supported" },
-  { value: "99%", label: "Answers grounded in your files" },
-  { value: "3", label: "Ways to learn every space" },
-];
-
-export function StatsSection() {
-  return (
-    <section className="stats-section" aria-labelledby="stats-heading">
-      <div className="stats-visual" aria-hidden>
-        <PhoneMockup className="stats-phone stats-phone--back" />
-        <PhoneMockup className="stats-phone stats-phone--front" />
-      </div>
-      <div className="stats-copy">
-        <p className="exp-kicker exp-kicker--light">About LearnSphere</p>
-        <h2 id="stats-heading" className="exp-title">
-          Manage every study space with one AI companion.
-        </h2>
-        <p className="exp-lead exp-lead--left">
-          One app for the live tutor, the grounded chat, the swipeable feed, and Sphere—your
-          progress coach. Everything stays scoped to the study space you&apos;re in.
-        </p>
-        <div className="stats-grid">
-          {stats.map((s) => (
-            <div key={s.label} className="stat-card">
-              <strong>{s.value}</strong>
-              <span>{s.label}</span>
-            </div>
-          ))}
-        </div>
       </div>
     </section>
   );
 }
 
-const testimonials = [
+export function FeatureCardsSection() {
+  return (
+    <section className="feature-cards" id="features" aria-labelledby="features-heading">
+      <div className="section-center">
+        <span className="pill-badge">✦ All-in-one LearnSphere</span>
+        <h2 id="features-heading" className="section-title">
+          The finest study companion you can find
+        </h2>
+      </div>
+
+      <div className="feature-card-grid">
+        <article className="feature-card">
+          <div className="feature-card-label">
+            <span className="feature-card-icon">◈</span>
+            Live Tutor
+          </div>
+          <h3>Talk to a tutor on a real video call</h3>
+          <p>
+            Voice in, voice out—with a lip-synced avatar. Briefings built from your indexed
+            materials so answers stay on syllabus.
+          </p>
+          <div className="feature-card-visual feature-card-visual--tutor">
+            <div className="mini-stat">
+              <small>Balance of focus</small>
+              <strong>Live</strong>
+            </div>
+            <div className="mini-stat">
+              <small>Grounded</small>
+              <strong>PDF p.12</strong>
+            </div>
+            <div className="mini-stat">
+              <small>Session</small>
+              <strong>+XP</strong>
+            </div>
+            <div className="mini-bars" aria-hidden>
+              <i style={{ height: "90%" }} />
+              <i style={{ height: "72%" }} />
+              <i style={{ height: "38%" }} />
+              <i style={{ height: "16%" }} />
+            </div>
+          </div>
+        </article>
+
+        <article className="feature-card">
+          <div className="feature-card-label feature-card-label--alt">
+            <span className="feature-card-icon">◇</span>
+            Easy Practice
+          </div>
+          <h3>Swipeable feed from your own uploads</h3>
+          <p>
+            Quizzes, flashcards, true/false, fill-in-the-blank, and memes—generated from the
+            course materials in your study space.
+          </p>
+          <div className="feature-card-visual feature-card-visual--cards">
+            <div className="fake-card fake-card--a">
+              <span>LearnSphere Card</span>
+              <strong>Feed · Quiz</strong>
+            </div>
+            <div className="fake-card fake-card--b">
+              <span>Practice</span>
+              <strong>Flashcard</strong>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+export function AboutSection() {
+  return (
+    <section className="stats-section" aria-labelledby="stats-heading">
+      <div className="stats-phones" aria-hidden>
+        <PhoneMockup className="stats-phone stats-phone--back" />
+        <PhoneMockup className="stats-phone stats-phone--front" />
+      </div>
+      <div className="stats-copy">
+        <span className="pill-badge">✦ About LearnSphere</span>
+        <h2 id="stats-heading" className="section-title">
+          Manage materials and goals with our all-in-one app
+        </h2>
+        <p className="section-lead">
+          Create a study space, upload PDFs and videos, then learn with a live tutor, grounded
+          chat, and a practice feed—while Sphere keeps your streak alive.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+const processSteps = [
   {
-    quote:
-      "The live tutor cited page 12 of my organic chem PDF—exactly what I needed before my exam.",
-    name: "Maya Chen",
-    role: "Pre-med student",
+    n: "1",
+    title: "Create a study space",
+    detail: "Name a course or exam topic—your private container for everything you learn.",
   },
   {
-    quote:
-      "Sphere nudged me before my streak broke. Small push, but it kept me consistent all semester.",
-    name: "Jordan Lee",
-    role: "CS undergrad",
+    n: "2",
+    title: "Upload & index",
+    detail: "Add PDFs, docs, recordings, or YouTube links. Wait for ingest—then retrieval is ready.",
   },
   {
-    quote:
-      "I turned a whole lecture recording into a flashcard deck during my commute. Genuinely useful.",
-    name: "Aisha Khan",
-    role: "Biology major",
+    n: "3",
+    title: "Learn every way",
+    detail: "Live call, chat & voice, feed swipes, or study tools—all scoped to that space.",
   },
 ];
 
-export function TestimonialsSection() {
+export function HowItWorksSection() {
   return (
-    <section className="testimonials" aria-labelledby="testimonials-heading">
-      <div className="exp-intro">
-        <p className="exp-kicker">Loved by learners</p>
-        <h2 id="testimonials-heading" className="exp-title">
-          What they&apos;re thinking about their study space
+    <section className="process-section" id="how-it-works" aria-labelledby="how-heading">
+      <div className="section-center">
+        <span className="pill-badge">✦ Simplified process</span>
+        <h2 id="how-heading" className="section-title">
+          Making digital studying easy
         </h2>
       </div>
-      <div className="testimonial-grid">
-        {testimonials.map((t) => (
-          <article key={t.name} className="testimonial-card">
-            <span className="testimonial-quote-mark" aria-hidden>
-              &ldquo;
-            </span>
-            <p className="testimonial-body">{t.quote}</p>
-            <div className="testimonial-foot">
-              <div className="testimonial-avatar" aria-hidden />
-              <div>
-                <p className="testimonial-name">{t.name}</p>
-                <p className="testimonial-role">{t.role}</p>
-              </div>
-            </div>
+      <div className="process-media">
+        <div className="process-media-inner">
+          <PhoneMockup />
+        </div>
+      </div>
+      <div className="process-cards">
+        {processSteps.map((step) => (
+          <article key={step.n} className="process-card">
+            <span className="process-num">{step.n}</span>
+            <h3>{step.title}</h3>
+            <p>{step.detail}</p>
           </article>
         ))}
+      </div>
+    </section>
+  );
+}
+
+const toolPoints = [
+  {
+    icon: "🛡",
+    title: "Grounded answers, every time",
+    detail: "Retrieval pulls from your own PDFs, notes, and transcripts before the tutor replies.",
+  },
+  {
+    icon: "📱",
+    title: "Mobile-first study sessions",
+    detail: "Live tutor, chat & voice, and the learning feed—designed for phone-sized focus.",
+  },
+  {
+    icon: "⚡",
+    title: "Sphere keeps you consistent",
+    detail: "Streaks, XP, and daily goals so habits stick without the guilt spiral.",
+  },
+];
+
+export function ToolsSection() {
+  return (
+    <section className="tools-section" aria-labelledby="tools-heading">
+      <div className="tools-copy">
+        <span className="pill-badge">✦ Quality features</span>
+        <h2 id="tools-heading" className="section-title">
+          Save time and score higher with powerful tools
+        </h2>
+        <p className="section-lead">
+          From video-bound quizzes to lip-synced live tutoring—everything is built to help you
+          study from what you already have.
+        </p>
+        <ul className="tools-list">
+          {toolPoints.map((t) => (
+            <li key={t.title}>
+              <span className="tools-list-icon" aria-hidden>
+                {t.icon}
+              </span>
+              <div>
+                <strong>{t.title}</strong>
+                <p>{t.detail}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="tools-phones" aria-hidden>
+        <PhoneMockup className="tools-phone tools-phone--a" />
+        <PhoneMockup className="tools-phone tools-phone--b" />
       </div>
     </section>
   );
@@ -135,78 +236,67 @@ export function DownloadCtaSection({
     <section className="download-cta" id="download" aria-labelledby="download-heading">
       <div className="download-cta-panel">
         <div className="download-cta-copy">
-          <p className="exp-kicker exp-kicker--light">Get the app</p>
-          <h2 id="download-heading">Start studying smarter today</h2>
+          <span className="pill-badge pill-badge--on-blue">✦ News and updates</span>
+          <h2 id="download-heading">Get the Android app</h2>
           <p>
-            Install the latest APK, sign in, create a study space, and try the live tutor, chat &
-            voice, or the learning feed right away.
+            Install the latest APK, sign in, create a study space, and try the live tutor or
+            learning feed right away.
           </p>
-          <div className="download-platforms">
-            <span className="platform-tag platform-tag--live">Android</span>
-            <span className="platform-tag">iOS · Coming soon</span>
-            <span className="platform-tag">Web · Coming soon</span>
+          <div className="download-cta-actions">
+            <a className="btn btn-white" href={downloadUrl}>
+              {downloadLabel}
+            </a>
+            <span className="download-cta-note">Android available · iOS & Web coming soon</span>
           </div>
-          <a className="btn btn-hero-cta btn-hero-cta--light" href={downloadUrl}>
-            {downloadLabel}
-          </a>
         </div>
-        <div className="download-cta-visual" aria-hidden>
-          <PhoneMockup className="download-cta-phone" />
+        <div className="download-cta-phones" aria-hidden>
+          <PhoneMockup className="download-phone download-phone--a" />
+          <PhoneMockup className="download-phone download-phone--b" />
         </div>
       </div>
     </section>
   );
 }
 
-const socialLinks = [
-  { label: "X", href: "https://x.com" },
-  { label: "in", href: "https://linkedin.com" },
-  { label: "◐", href: "https://instagram.com" },
-];
-
 export function SiteFooter() {
   return (
-    <footer className="site-footer-new">
+    <footer className="site-footer">
       <div className="footer-top">
         <div className="footer-social">
-          {socialLinks.map((s) => (
-            <a key={s.label} href={s.href} className="footer-social-icon" aria-label={s.label}>
-              {s.label}
-            </a>
-          ))}
+          <span className="footer-social-btn">X</span>
+          <span className="footer-social-btn">in</span>
+          <span className="footer-social-btn">◉</span>
         </div>
         <div className="footer-brand">
           <Image src="/learnsphere-icon.png" alt="" width={28} height={28} />
           <span>LearnSphere</span>
         </div>
-        <div className="footer-social footer-social--right" aria-hidden />
+        <div className="footer-platforms">
+          <span>Android</span>
+          <span>iOS soon</span>
+          <span>Web soon</span>
+        </div>
       </div>
       <div className="footer-divider" />
       <div className="footer-contact">
         <div>
-          <span className="footer-contact-icon" aria-hidden>
-            ✉
-          </span>
-          <p>Email us</p>
-          <p className="footer-contact-detail">hello@learnsphere.app</p>
+          <span className="footer-icon">✉</span>
+          <strong>Email</strong>
+          <p>hello@learnsphere.app</p>
         </div>
         <div>
-          <span className="footer-contact-icon" aria-hidden>
-            ⬢
-          </span>
-          <p>Platforms</p>
-          <p className="footer-contact-detail">Android now · iOS & Web soon</p>
+          <span className="footer-icon">◈</span>
+          <strong>Stack</strong>
+          <p>LiveKit · Gemini · Groq · Supabase</p>
         </div>
         <div>
-          <span className="footer-contact-icon" aria-hidden>
-            ◈
-          </span>
-          <p>Built with</p>
-          <p className="footer-contact-detail">LiveKit · Gemini · Groq · Supabase</p>
+          <span className="footer-icon">⬡</span>
+          <strong>Privacy</strong>
+          <p>Your spaces. Your materials. RLS-protected.</p>
         </div>
       </div>
       <div className="footer-divider" />
-      <p className="footer-copyright">© {new Date().getFullYear()} LearnSphere. All rights reserved.</p>
+      <p className="footer-copy">© {new Date().getFullYear()} LearnSphere. All rights reserved.</p>
     </footer>
   );
 }

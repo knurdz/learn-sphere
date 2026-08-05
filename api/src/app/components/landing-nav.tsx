@@ -3,7 +3,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ThemeToggle } from "./theme-toggle";
 
 type LandingNavProps = {
   downloadUrl: string;
@@ -13,6 +12,7 @@ const sections = [
   { id: "hero", href: "#hero", label: "Home" },
   { id: "features", href: "#features", label: "Features" },
   { id: "how-it-works", href: "#how-it-works", label: "How it works" },
+  { id: "faq", href: "#faq", label: "FAQ" },
   { id: "download", href: "#download", label: "Download" },
 ];
 
@@ -50,12 +50,12 @@ export function LandingNav({ downloadUrl }: LandingNavProps) {
         <span>LearnSphere</span>
       </Link>
 
-      <nav className="nav-pill" aria-label="Primary">
+      <nav className="nav-links" aria-label="Primary">
         {sections.map((item) => (
           <a
             key={item.id}
             href={item.href}
-            className={`nav-pill-link${active === item.id ? " is-active" : ""}`}
+            className={`nav-link${active === item.id ? " is-active" : ""}`}
             onClick={() => setActive(item.id)}
           >
             {item.label}
@@ -63,15 +63,12 @@ export function LandingNav({ downloadUrl }: LandingNavProps) {
         ))}
       </nav>
 
-      <div className="site-header-actions">
-        <ThemeToggle />
-        <a className="btn btn-download" href={downloadUrl}>
-          Download
-          <span className="btn-download-arrow" aria-hidden>
-            →
-          </span>
-        </a>
-      </div>
+      <a className="btn btn-nav-cta" href={downloadUrl}>
+        Get Started Now
+        <span className="btn-nav-cta-arrow" aria-hidden>
+          →
+        </span>
+      </a>
     </header>
   );
 }

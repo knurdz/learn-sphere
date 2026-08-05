@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { getSupabaseEnv } from "./config";
+import { getSupabaseEnv, hasSupabaseEnv } from "./config";
 import type { Database } from "./database";
 
 export function getBearerToken(request?: Request) {
@@ -45,7 +45,7 @@ export async function createSupabaseServerClient(
 }
 
 export async function getAuthContext(request?: Request) {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  if (!hasSupabaseEnv()) {
     return {
       configured: false as const,
       user: null,
@@ -55,13 +55,14 @@ export async function getAuthContext(request?: Request) {
 
   const supabase = await createSupabaseServerClient(request);
   const bearer = getBearerToken(request);
-  const {
-    data: { user },
-  } = bearer ? await supabase.auth.getUser(bearer) : await supabase.auth.getUser();
+  const result = bearer
+    ? await supabase.auth.getUser(bearer)
+    : await supabase.auth.getUser();
 
   return {
     configured: true as const,
-    user,
+    user: result.data.user,
     supabase,
+    authError: result.error?.message ?? null,
   };
 }

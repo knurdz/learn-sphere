@@ -29,13 +29,13 @@ export function FaqSection() {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
   return (
-    <section className="faq-section" aria-labelledby="faq-heading">
+    <section className="faq-section" id="faq" aria-labelledby="faq-heading">
       <div className="faq-intro">
-        <p className="exp-kicker">Frequently asked questions</p>
-        <h2 id="faq-heading" className="exp-title">
-          Your study queries, answered instantly
+        <span className="pill-badge">✦ Frequently asked questions</span>
+        <h2 id="faq-heading" className="section-title">
+          Your study queries, solved instantly
         </h2>
-        <p className="exp-lead exp-lead--left">
+        <p className="section-lead">
           Everything you need to know about study spaces, the live tutor, and how your materials
           stay private.
         </p>
@@ -52,8 +52,8 @@ export function FaqSection() {
                 onClick={() => setOpenIndex(open ? null : i)}
               >
                 <span>{item.q}</span>
-                <span className="faq-icon" aria-hidden>
-                  {open ? "−" : "+"}
+                <span className="faq-chevron" aria-hidden>
+                  {open ? "▴" : "▾"}
                 </span>
               </button>
               {open && <p className="faq-answer">{item.a}</p>}
