@@ -9,14 +9,14 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "LearnSphere — Your AI study companion",
+    default: "LearnSphere: Your AI study companion",
     template: "%s · LearnSphere",
   },
   description:
     "Talk to a live AI tutor, organize your course materials, and learn with quizzes and flashcards grounded in what you upload.",
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   openGraph: {
-    title: "LearnSphere — Your AI study companion",
+    title: "LearnSphere: Your AI study companion",
     description:
       "Voice-first tutoring grounded in your PDFs, notes, and videos. Android available now.",
     type: "website",
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "LearnSphere — Your AI study companion",
+    title: "LearnSphere: Your AI study companion",
     description:
       "Voice-first tutoring grounded in your PDFs, notes, and videos. Android available now.",
   },

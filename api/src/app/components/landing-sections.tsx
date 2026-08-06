@@ -76,7 +76,7 @@ export function TrustRow() {
     <section className="trust-section">
       <p className="trust-heading">Built for every course you study</p>
       <p className="trust-lead">
-        Chemistry, calculus, biology, history, languages, physics—and anything else you can put in a
+        Chemistry, calculus, biology, history, languages, physics, and anything else you can put in a
         study space. Answers stay grounded in your uploads, not the open web.
       </p>
     </section>
@@ -94,7 +94,7 @@ export function FeatureCardsSection() {
           Three ways to learn from the same materials
         </h2>
         <p className="section-lead">
-          Live tutoring, a practice feed, and grounded chat—all scoped to one private study space.
+          Live tutoring, a practice feed, and grounded chat, all scoped to one private study space.
         </p>
       </div>
 
@@ -106,7 +106,7 @@ export function FeatureCardsSection() {
           </div>
           <h3>Talk to a tutor on a real video call</h3>
           <p>
-            Voice in, voice out—with a lip-synced avatar. Briefings built from your indexed materials
+            Voice in, voice out, with a lip-synced avatar. Briefings built from your indexed materials
             so answers stay on syllabus.
           </p>
           <div className="feature-card-phone">
@@ -121,7 +121,7 @@ export function FeatureCardsSection() {
           </div>
           <h3>Swipeable feed from your own uploads</h3>
           <p>
-            Quizzes, flashcards, true/false, fill-in-the-blank, and memes—generated from the course
+            Quizzes, flashcards, true/false, fill-in-the-blank, and memes, generated from the course
             materials in your study space.
           </p>
           <div className="feature-card-phone">
@@ -137,7 +137,7 @@ export function FeatureCardsSection() {
           <h3>Upload once. Retrieve forever.</h3>
           <p>
             PDFs, docs, recordings, and YouTube links are chunked and embedded so chat and the live
-            tutor answer from your files—not generic web knowledge.
+            tutor answer from your files, not generic web knowledge.
           </p>
           <div className="feature-card-phone">
             <PhoneMockup variant="library" />
@@ -152,17 +152,17 @@ const processSteps = [
   {
     n: "1",
     title: "Create a study space",
-    detail: "Name a course or exam topic—your private container for everything you learn.",
+    detail: "Name a course or exam topic. It becomes your private container for everything you learn.",
   },
   {
     n: "2",
     title: "Upload & index",
-    detail: "Add PDFs, docs, recordings, or YouTube links. Wait for ingest—then retrieval is ready.",
+    detail: "Add PDFs, docs, recordings, or YouTube links. Wait for ingest, then retrieval is ready.",
   },
   {
     n: "3",
     title: "Learn every way",
-    detail: "Live call, chat & voice, feed swipes, or study tools—all scoped to that space.",
+    detail: "Live call, chat and voice, feed swipes, or study tools, all scoped to that space.",
   },
 ];
 
@@ -199,7 +199,7 @@ const toolPoints = [
   {
     icon: <IconPhone />,
     title: "Mobile-first study sessions",
-    detail: "Live tutor, chat & voice, and the learning feed—designed for phone-sized focus.",
+    detail: "Live tutor, chat and voice, and the learning feed, designed for phone-sized focus.",
   },
   {
     icon: <IconBolt />,
@@ -219,7 +219,7 @@ export function ToolsSection() {
           Built to keep you on your own syllabus
         </h2>
         <p className="section-lead">
-          From video-bound quizzes to lip-synced live tutoring—everything helps you study from what
+          From video-bound quizzes to lip-synced live tutoring, everything helps you study from what
           you already have.
         </p>
         <ul className="tools-list">

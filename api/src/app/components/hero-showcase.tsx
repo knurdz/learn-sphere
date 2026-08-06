@@ -13,8 +13,8 @@ export function HeroShowcase({ downloadUrl, versionLabel }: HeroShowcaseProps) {
       <div className="hero-col hero-col--left">
         <h1 className="hero-title">An AI tutor that only teaches from your own notes</h1>
         <p className="hero-sub">
-          Live video tutoring, RAG-grounded chat, and a swipeable practice feed—scoped to the PDFs,
-          docs, and videos you upload.
+          Live video tutoring, RAG-grounded chat, and a swipeable practice feed, all scoped to the
+          PDFs, docs, and videos you upload.
         </p>
         <div className="hero-cta-block">
           <a className="btn btn-primary" href={downloadUrl}>
@@ -33,8 +33,8 @@ export function HeroShowcase({ downloadUrl, versionLabel }: HeroShowcaseProps) {
 
       <div className="hero-col hero-col--right">
         <p className="hero-aside">
-          Built around private study spaces—simple tools for live tutoring, practice, and progress
-          without leaving your materials behind.
+          Built around private study spaces with simple tools for live tutoring, practice, and
+          progress, without leaving your materials behind.
         </p>
         <div className="store-buttons">
           <a className="store-btn" href={downloadUrl}>

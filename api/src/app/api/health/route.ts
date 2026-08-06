@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
       configured: Boolean(url && anonKey),
       urlHost: url ? new URL(url).host : null,
       projectRef: supabaseProjectRef(url),
-      /** First 12 chars of anon key — compare with Flutter/GitHub secrets (anon key is public). */
+      /** First 12 chars of anon key. Compare with Flutter/GitHub secrets (anon key is public). */
       anonKeyPreview: anonKey ? `${anonKey.slice(0, 12)}…` : null,
       envSources: {
         supabaseUrl: process.env.SUPABASE_URL ? "SUPABASE_URL" : process.env.NEXT_PUBLIC_SUPABASE_URL ? "NEXT_PUBLIC_SUPABASE_URL" : null,

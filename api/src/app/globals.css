@@ -492,9 +492,14 @@ button {
   padding: 10px;
   border-radius: 40px;
   background: var(--phone-bezel);
+  /* Layered soft shadow: contact → mid → ambient (avoids a hard straight edge) */
   box-shadow:
-    0 30px 80px rgba(0, 0, 0, 0.55),
-    0 0 0 1px rgba(255, 255, 255, 0.06);
+    0 1px 2px rgba(0, 0, 0, 0.18),
+    0 8px 20px rgba(0, 0, 0, 0.16),
+    0 24px 48px rgba(0, 0, 0, 0.22),
+    0 48px 80px -12px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
 .phone-island {
@@ -1121,11 +1126,24 @@ button {
 
 .tools-phone--a {
   transform: translateX(-30%) rotate(-8deg) scale(0.9);
+  filter: brightness(0.9);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.18),
+    0 28px 56px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .tools-phone--b {
   transform: translateX(22%) rotate(6deg);
   z-index: 2;
+  /* Soft cast onto the rear phone (blurred + negative spread, not a hard slab) */
+  box-shadow:
+    -14px 10px 28px -6px rgba(0, 0, 0, 0.2),
+    -4px 4px 12px rgba(0, 0, 0, 0.1),
+    0 12px 32px rgba(0, 0, 0, 0.18),
+    0 36px 64px -10px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
 /* —— FAQ —— */
@@ -1276,11 +1294,23 @@ button {
 
 .download-phone--a {
   transform: translateX(-28%) rotate(-8deg) scale(0.82);
+  filter: brightness(0.88);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.2),
+    0 28px 56px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .download-phone--b {
   transform: translateX(20%) rotate(5deg) scale(0.9);
   z-index: 2;
+  box-shadow:
+    -16px 12px 32px -8px rgba(0, 0, 0, 0.22),
+    -5px 5px 14px rgba(0, 0, 0, 0.12),
+    0 14px 36px rgba(0, 0, 0, 0.2),
+    0 40px 72px -12px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
 /* —— Footer —— */
