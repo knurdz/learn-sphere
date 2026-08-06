@@ -52,7 +52,7 @@ function FeedScreen({ priority }: { priority: boolean }) {
       </div>
       <article className="phone-feed-card">
         <p className="phone-feed-q">Mitochondria produce ATP via oxidative phosphorylation.</p>
-        <span className="feed-badge feed-badge--success">From your PDF · p. 24</span>
+        <span className="feed-badge feed-badge--success">From your PDF, p. 24</span>
       </article>
       <article className="phone-feed-card">
         <p className="phone-feed-q">Quick quiz: name the rate-limiting step in glycolysis.</p>
@@ -88,7 +88,7 @@ function TutorScreen({ priority }: { priority: boolean }) {
         </div>
       </div>
       <div className="phone-tutor-panel">
-        <div className="phone-tutor-chip">Grounded · PDF p.12</div>
+        <div className="phone-tutor-chip">Grounded from PDF p.12</div>
         <p className="phone-tutor-line">“Phosphofructokinase-1 is the rate-limiting step.”</p>
         <div className="phone-tutor-controls">
           <span>Mute</span>
@@ -112,21 +112,21 @@ function LibraryScreen() {
           <span className="phone-lib-icon">PDF</span>
           <div>
             <strong>Lecture 4: Glycolysis</strong>
-            <small>Indexed · 24 pages</small>
+            <small>Indexed, 24 pages</small>
           </div>
         </li>
         <li>
           <span className="phone-lib-icon phone-lib-icon--vid">VID</span>
           <div>
             <strong>Krebs cycle walkthrough</strong>
-            <small>YouTube · transcribed</small>
+            <small>YouTube, transcribed</small>
           </div>
         </li>
         <li>
           <span className="phone-lib-icon phone-lib-icon--doc">DOC</span>
           <div>
             <strong>Lab notes: week 3</strong>
-            <small>Indexed · 6 pages</small>
+            <small>Indexed, 6 pages</small>
           </div>
         </li>
         <li>
@@ -140,7 +140,7 @@ function LibraryScreen() {
           <span className="phone-lib-icon phone-lib-icon--doc">DOC</span>
           <div>
             <strong>Study guide: midterm</strong>
-            <small>Indexed · 11 pages</small>
+            <small>Indexed, 11 pages</small>
           </div>
         </li>
       </ul>
