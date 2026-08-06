@@ -117,7 +117,7 @@ export async function ensureYouTubeStudySource(
   const timedSegments = await fetchTranscriptSegments(videoId);
   if (timedSegments.length === 0) {
     throw new Error(
-      "This YouTube video does not expose readable captions. Choose a video with captions enabled.",
+      "This YouTube video could not be read from captions or audio transcription. Try another video URL.",
     );
   }
 

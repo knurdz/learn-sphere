@@ -137,6 +137,19 @@
     }
   },
   "progressDailyGoalTitle": "Daily goal",
+  "progressGoalCompleted": "Goal completed ({done}/{goal})",
+  "@progressGoalCompleted": {
+    "placeholders": {
+      "done": {"type": "int"},
+      "goal": {"type": "int"}
+    }
+  },
+  "progressExtraActivities": "+{count} extra activities",
+  "@progressExtraActivities": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
   "progressTodayXp": "+{xp} XP today",
   "@progressTodayXp": {
     "placeholders": {

@@ -116,7 +116,7 @@ export async function buildTeachingInstructions(
     mode === "video_create"
       ? `Teach this topic from scratch in a clear, friendly lesson. Start with a simple explanation, use an example, then check understanding. User topic and brief: ${brief}`
       : mode === "youtube_tutor"
-        ? "Teach the supplied YouTube video using its readable captions. Start by explaining the main idea and structure, then guide the learner through the video with short explanations, examples, and frequent comprehension questions."
+        ? "Teach the supplied YouTube video using extracted transcript context from captions or audio transcription. Start by explaining the main idea and structure, then guide the learner through the video with short explanations, examples, and frequent comprehension questions."
         : mode === "video_engage"
           ? "Turn the indexed lesson into an engaging live teaching session. Use a strong hook, short explanations, examples, prediction questions, and active-recall checks."
           : "Answer the learner's questions using the indexed study material. Explain clearly, ask useful follow-up questions, and say when the sources do not support an answer.";

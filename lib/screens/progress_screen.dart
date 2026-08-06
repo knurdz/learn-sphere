@@ -1,6 +1,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../gamification_models.dart';
 import '../gamification_provider.dart';
@@ -29,6 +30,16 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.progressTitle),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            } else {
+              context.go('/feed');
+            }
+          },
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -164,6 +175,9 @@ class _DailyGoalRing extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final goal = summary.dailyGoal <= 0 ? 1 : summary.dailyGoal;
+    final clampedDone = summary.todayEventCount.clamp(0, goal);
+    final extra = (summary.todayEventCount - goal).clamp(0, 99999);
     final progress = summary.dailyGoal == 0
         ? 0.0
         : (summary.todayEventCount / summary.dailyGoal).clamp(0.0, 1.0);
@@ -190,7 +204,16 @@ class _DailyGoalRing extends StatelessWidget {
                     l10n.progressDailyGoalTitle,
                     style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                   ),
-                  Text(l10n.coachDailyProgress(summary.todayEventCount, summary.dailyGoal)),
+                  Text(
+                    summary.dailyGoalMet
+                        ? l10n.progressGoalCompleted(clampedDone, goal)
+                        : l10n.coachDailyProgress(clampedDone, goal),
+                  ),
+                  if (summary.dailyGoalMet && extra > 0)
+                    Text(
+                      l10n.progressExtraActivities(extra),
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
                   Text(l10n.progressTodayXp(summary.todayXp)),
                 ],
               ),
@@ -222,49 +245,80 @@ class _ActivityChart extends StatelessWidget {
 
     final maxY = buckets.map((b) => b.eventCount).fold<int>(0, (a, b) => a > b ? a : b).toDouble() + 1;
 
-    return BarChart(
-      BarChartData(
-        maxY: maxY,
-        gridData: const FlGridData(show: false),
-        borderData: FlBorderData(show: false),
-        titlesData: FlTitlesData(
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 28)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 28,
-              getTitlesWidget: (value, meta) {
-                final index = value.toInt();
-                if (index < 0 || index >= buckets.length) return const SizedBox.shrink();
-                final label = buckets[index].label;
-                return Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                    label.length > 5 ? label.substring(label.length - 5) : label,
-                    style: theme.textTheme.labelSmall,
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-        barGroups: [
-          for (var i = 0; i < buckets.length; i++)
-            BarChartGroupData(
-              x: i,
-              barRods: [
-                BarChartRodData(
-                  toY: buckets[i].eventCount.toDouble(),
-                  color: theme.colorScheme.primary,
-                  width: analytics.range == 'month' ? 6 : 14,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final targetLabelWidth = analytics.range == 'day' ? 44.0 : 34.0;
+        final maxLabels = (width / targetLabelWidth).floor().clamp(2, buckets.length);
+        final showEvery = (buckets.length / maxLabels).ceil().clamp(1, buckets.length);
+        final rotate = analytics.range == 'day';
+        final reserved = rotate ? 44.0 : 34.0;
+        return BarChart(
+          BarChartData(
+            maxY: maxY,
+            gridData: const FlGridData(show: false),
+            borderData: FlBorderData(show: false),
+            titlesData: FlTitlesData(
+              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 28)),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: reserved,
+                  getTitlesWidget: (value, meta) {
+                    final index = value.toInt();
+                    if (index < 0 || index >= buckets.length) return const SizedBox.shrink();
+                    final isEdge = index == 0 || index == buckets.length - 1;
+                    if (!isEdge && index % showEvery != 0) return const SizedBox.shrink();
+                    final label = _bucketLabelForRange(buckets[index].startDate, analytics.range);
+                    return SideTitleWidget(
+                      meta: meta,
+                      angle: rotate ? -0.55 : 0,
+                      child: Text(label, style: theme.textTheme.labelSmall),
+                    );
+                  },
                 ),
-              ],
+              ),
             ),
-        ],
-      ),
+            barGroups: [
+              for (var i = 0; i < buckets.length; i++)
+                BarChartGroupData(
+                  x: i,
+                  barRods: [
+                    BarChartRodData(
+                      toY: buckets[i].eventCount.toDouble(),
+                      color: theme.colorScheme.primary,
+                      width: analytics.range == 'month' ? 6 : 14,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
+}
+
+String _bucketLabelForRange(String startDate, String range) {
+  if (range == 'day') {
+    final hourToken = startDate.length >= 13 ? startDate.substring(11, 13) : '00';
+    return '$hourToken:00';
+  }
+
+  final parsed = DateTime.tryParse(startDate);
+  if (parsed == null) {
+    return startDate.length > 5 ? startDate.substring(startDate.length - 5) : startDate;
+  }
+
+  if (range == 'week') {
+    const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    return labels[parsed.weekday - 1];
+  }
+
+  final month = parsed.month.toString().padLeft(2, '0');
+  final day = parsed.day.toString().padLeft(2, '0');
+  return '$month/$day';
 }

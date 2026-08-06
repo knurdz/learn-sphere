@@ -133,6 +133,18 @@ export function addLocalDays(dateKey: string, delta: number): string {
   return utc.toISOString().slice(0, 10);
 }
 
+function labelForDateKey(range: AnalyticsRange, dateKey: string): string {
+  if (range === "week") {
+    const parsed = new Date(`${dateKey}T00:00:00.000Z`);
+    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][parsed.getUTCDay()];
+  }
+  if (range === "month") {
+    const [_, month, day] = dateKey.split("-");
+    return `${month}/${day}`;
+  }
+  return dateKey.slice(5);
+}
+
 export function computeStreakAfterActivity(
   row: Pick<UserGamificationRow, "current_streak" | "longest_streak" | "last_qualifying_date">,
   activityLocalDate: string,
@@ -270,15 +282,6 @@ export function pickCoachMessage(input: {
     };
   }
 
-  if (summary.currentStreak === 1 && summary.todayEventCount > 0) {
-    return {
-      id: "streak_new",
-      text: "Streak started! Come back tomorrow to keep the flame going.",
-      ctaLabel: null,
-      ctaRoute: null,
-    };
-  }
-
   if (summary.todayEventCount > 0) {
     return {
       id: "daily_goal_progress",
@@ -354,7 +357,7 @@ export function buildAnalytics(
     for (let i = 0; i < dayCount; i += 1) {
       const key = addLocalDays(start, i);
       dayMap.set(key, {
-        label: key.slice(5),
+        label: labelForDateKey(range, key),
         startDate: key,
         eventCount: 0,
         xp: 0,

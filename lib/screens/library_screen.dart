@@ -118,7 +118,7 @@ class LibraryScreenState extends ConsumerState<LibraryScreen> {
       return;
     }
     final result = await FilePicker.platform.pickFiles(
-      allowMultiple: false,
+      allowMultiple: true,
       withData: false,
       type: FileType.custom,
       allowedExtensions: ['pdf', 'docx', 'txt', 'mp3', 'wav', 'mp4'],
@@ -129,10 +129,26 @@ class LibraryScreenState extends ConsumerState<LibraryScreen> {
       _error = null;
     });
     try {
-      final item = await repository.uploadMaterial(studySpaceId: spaceId, file: result.files.single);
+      final batch = await repository.uploadMaterials(studySpaceId: spaceId, files: result.files);
       await _load();
       if (mounted) {
-        unawaited(_prepareMaterial(item, showSuccessMessage: true));
+        for (final item in batch.items) {
+          unawaited(_prepareMaterial(item, showSuccessMessage: false));
+        }
+        if (batch.items.isNotEmpty) {
+          final count = batch.items.length;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$count file${count == 1 ? '' : 's'} uploaded. Preparing for Feed.')),
+          );
+        }
+        if (batch.failures.isNotEmpty) {
+          final first = batch.failures.first;
+          final more = batch.failures.length - 1;
+          final suffix = more > 0 ? ' (+$more more)' : '';
+          setState(() {
+            _error = 'Some files failed: ${first.fileName}$suffix — ${first.error}';
+          });
+        }
       }
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
@@ -160,6 +176,53 @@ class LibraryScreenState extends ConsumerState<LibraryScreen> {
       if (mounted) {
         setState(() => _preparingIds.remove(material.id));
       }
+    }
+  }
+
+  Future<bool> _confirmDeleteMaterial(MaterialItem material) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete file?'),
+        content: Text(
+          'Delete "${material.name}" from this space? This also removes generated learning content from this file.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<void> _deleteMaterial(MaterialItem material) async {
+    final confirmed = await _confirmDeleteMaterial(material);
+    if (!confirmed) return;
+    if (!mounted) return;
+    setState(() {
+      _busyId = 'delete:${material.id}';
+      _error = null;
+    });
+    try {
+      await repository.deleteMaterial(material.id);
+      _preparingIds.remove(material.id);
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('File deleted.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    } finally {
+      if (mounted) setState(() => _busyId = null);
     }
   }
 
@@ -247,7 +310,7 @@ class LibraryScreenState extends ConsumerState<LibraryScreen> {
                     const Text('Create a subject before adding material.')
                   else
                     DropdownButtonFormField<String>(
-                      value: _selectedSpaceId,
+                      initialValue: _selectedSpaceId,
                       decoration: const InputDecoration(
                         prefixIcon: Icon(Icons.book_outlined),
                         labelText: 'Current subject',
@@ -297,6 +360,7 @@ class LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   Widget _materialCard(MaterialItem material) {
     final preparing = _preparingIds.contains(material.id);
+    final deleting = _busyId == 'delete:${material.id}';
     final ready = material.status == MaterialStatus.ready && !preparing;
     final failed = material.status == MaterialStatus.error || material.status == MaterialStatus.uploadFailed;
     final showProgress = _showMaterialProgress(material) && !failed;
@@ -388,7 +452,7 @@ class LibraryScreenState extends ConsumerState<LibraryScreen> {
                   ],
                 ),
               ),
-              if (preparing)
+              if (preparing || deleting)
                 Padding(
                   padding: const EdgeInsets.only(left: 8, top: 4),
                   child: SizedBox.square(
@@ -396,11 +460,22 @@ class LibraryScreenState extends ConsumerState<LibraryScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2, color: primary),
                   ),
                 )
-              else if (material.status == MaterialStatus.error)
-                IconButton(
-                  onPressed: () => _prepareMaterial(material, showSuccessMessage: true),
-                  icon: const Icon(Icons.refresh_rounded),
-                  tooltip: 'Try again',
+              else
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (material.status == MaterialStatus.error)
+                      IconButton(
+                        onPressed: () => _prepareMaterial(material, showSuccessMessage: true),
+                        icon: const Icon(Icons.refresh_rounded),
+                        tooltip: 'Try again',
+                      ),
+                    IconButton(
+                      onPressed: () => _deleteMaterial(material),
+                      icon: const Icon(Icons.delete_outline),
+                      tooltip: 'Delete file',
+                    ),
+                  ],
                 ),
             ],
           ),

@@ -173,6 +173,10 @@ class BridgeApi {
     await _handle(_post('/api/materials/$materialId/ingest'), (_) {});
   }
 
+  Future<void> deleteMaterial(String materialId) async {
+    await _handle(_delete('/api/materials/$materialId'), (_) {});
+  }
+
   Future<Map<String, dynamic>> generateLearning({
     required String studySpaceId,
     required String materialId,
@@ -219,6 +223,15 @@ class BridgeApi {
       (data) => jsonMap(data),
     );
     return '${jsonMap(result['session'])['id'] ?? ''}';
+  }
+
+  Future<List<TutorSessionSummary>> fetchTutorSessions(String studySpaceId) async {
+    return _handle(
+      _get('/api/tutor/sessions/list', query: {'studySpaceId': studySpaceId}),
+      (data) => jsonList(jsonMap(data)['sessions'])
+          .map((item) => TutorSessionSummary.fromMap(jsonMap(item)))
+          .toList(),
+    );
   }
 
   Future<List<ChatMessage>> fetchTutorMessages(String sessionId) async {

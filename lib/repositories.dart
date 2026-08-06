@@ -17,13 +17,23 @@ final studyRepositoryProvider = Provider<StudyRepository>((ref) {
   );
 });
 
+class MaterialUploadBatchResult {
+  const MaterialUploadBatchResult({
+    required this.items,
+    required this.failures,
+  });
+
+  final List<MaterialItem> items;
+  final List<({String fileName, String error})> failures;
+}
+
 class StudyRepository {
   StudyRepository(this.client, this.bridge, this.cache);
 
   final SupabaseClient client;
   final BridgeApi bridge;
   final CacheStore cache;
-  static final _uuid = Uuid();
+  static const _uuid = Uuid();
 
   Future<List<StudySpace>> listSpaces() async {
     try {
@@ -109,6 +119,25 @@ class StudyRepository {
       throw BridgeException('$error');
     }
   }
+
+  Future<MaterialUploadBatchResult> uploadMaterials({
+    required String studySpaceId,
+    required List<PlatformFile> files,
+  }) async {
+    final uploaded = <MaterialItem>[];
+    final failures = <({String fileName, String error})>[];
+    for (final file in files) {
+      try {
+        final item = await uploadMaterial(studySpaceId: studySpaceId, file: file);
+        uploaded.add(item);
+      } catch (error) {
+        failures.add((fileName: file.name, error: '$error'));
+      }
+    }
+    return MaterialUploadBatchResult(items: uploaded, failures: failures);
+  }
+
+  Future<void> deleteMaterial(String materialId) => bridge.deleteMaterial(materialId);
 
   Future<void> ingest(MaterialItem material) => bridge.ingestMaterial(material.id);
 
@@ -278,6 +307,10 @@ class StudyRepository {
         'progress': {
           'completedAt': item.progress.completedAt?.toIso8601String(),
           'lastScore': item.progress.lastScore,
+          'quizSelectedIndex': item.progress.quizSelectedIndex,
+          'quizCorrectIndex': item.progress.quizCorrectIndex,
+          'trueFalseSelected': item.progress.trueFalseSelected,
+          'fillBlankSelectedAnswer': item.progress.fillBlankSelectedAnswer,
         },
       };
 
@@ -295,5 +328,13 @@ class StudyRepository {
       brief: brief,
       youtubeUrl: youtubeUrl,
     );
+  }
+
+  Future<List<TutorSessionSummary>> tutorSessions(String studySpaceId) {
+    return bridge.fetchTutorSessions(studySpaceId);
+  }
+
+  Future<List<ChatMessage>> tutorMessages(String sessionId) {
+    return bridge.fetchTutorMessages(sessionId);
   }
 }

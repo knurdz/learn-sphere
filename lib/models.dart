@@ -100,16 +100,31 @@ class MaterialItem {
 }
 
 class Progress {
-  const Progress({this.completedAt, this.lastScore});
+  const Progress({
+    this.completedAt,
+    this.lastScore,
+    this.quizSelectedIndex,
+    this.quizCorrectIndex,
+    this.trueFalseSelected,
+    this.fillBlankSelectedAnswer,
+  });
 
   final DateTime? completedAt;
   final num? lastScore;
+  final int? quizSelectedIndex;
+  final int? quizCorrectIndex;
+  final bool? trueFalseSelected;
+  final String? fillBlankSelectedAnswer;
 
   bool get completed => completedAt != null;
 
   factory Progress.fromMap(Map<String, dynamic> map) => Progress(
         completedAt: DateTime.tryParse('${map['completedAt'] ?? map['completed_at'] ?? ''}'),
         lastScore: map['lastScore'] ?? map['last_score'] as num?,
+        quizSelectedIndex: map['quizSelectedIndex'] as int?,
+        quizCorrectIndex: map['quizCorrectIndex'] as int?,
+        trueFalseSelected: map['trueFalseSelected'] as bool?,
+        fillBlankSelectedAnswer: map['fillBlankSelectedAnswer'] as String?,
       );
 }
 
@@ -172,6 +187,32 @@ class ChatMessage {
             .map((item) => Citation.fromMap(jsonMap(item)))
             .toList(),
         createdAt: DateTime.tryParse('${map['created_at'] ?? ''}') ?? DateTime.now(),
+      );
+}
+
+class TutorSessionSummary {
+  const TutorSessionSummary({
+    required this.id,
+    required this.title,
+    required this.preview,
+    required this.messageCount,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String title;
+  final String preview;
+  final int messageCount;
+  final DateTime updatedAt;
+
+  factory TutorSessionSummary.fromMap(Map<String, dynamic> map) =>
+      TutorSessionSummary(
+        id: '${map['id'] ?? ''}',
+        title: '${map['title'] ?? 'New tutor session'}',
+        preview: '${map['preview'] ?? ''}',
+        messageCount: int.tryParse('${map['messageCount'] ?? 0}') ?? 0,
+        updatedAt: DateTime.tryParse('${map['updatedAt'] ?? ''}') ??
+            DateTime.now(),
       );
 }
 

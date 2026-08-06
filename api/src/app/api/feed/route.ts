@@ -121,6 +121,29 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: progressError.message }, { status: 500 });
   }
 
+  const { data: attemptsRows, error: attemptsError } = artifactIds.length
+    ? await context.supabase
+        .from("study_attempts")
+        .select("artifact_id,answers,created_at")
+        .eq("user_id", context.user.id)
+        .in("artifact_id", artifactIds)
+        .order("created_at", { ascending: false })
+    : { data: [], error: null };
+
+  if (attemptsError) {
+    return NextResponse.json({ error: attemptsError.message }, { status: 500 });
+  }
+
+  const latestAttempts = new Map<string, { answer: unknown }>();
+  for (const attempt of attemptsRows ?? []) {
+    if (latestAttempts.has(attempt.artifact_id)) continue;
+    const answers =
+      attempt.answers && typeof attempt.answers === "object" && !Array.isArray(attempt.answers)
+        ? (attempt.answers as { answer?: unknown })
+        : {};
+    latestAttempts.set(attempt.artifact_id, { answer: answers.answer });
+  }
+
   const progressMap = new Map(
     (progressRows ?? []).map((progress) => [
       progress.artifact_id,
@@ -188,10 +211,53 @@ export async function GET(request: NextRequest) {
           ? materialNames.get(artifact.material_id) ?? "Study material"
           : null,
         createdAt: artifact.created_at,
-        progress: progressMap.get(artifact.id) ?? {
-          completedAt: null,
-          lastScore: null,
-        },
+        progress: (() => {
+          const progress = progressMap.get(artifact.id) ?? {
+            completedAt: null,
+            lastScore: null,
+          };
+          const attempt = latestAttempts.get(artifact.id);
+
+          if (!progress.completedAt) return progress;
+
+          if (kind === "quiz") {
+            const quizPayload =
+              artifact.payload &&
+              typeof artifact.payload === "object" &&
+              !Array.isArray(artifact.payload)
+                ? (artifact.payload as { correct_index?: unknown })
+                : {};
+            return {
+              ...progress,
+              quizSelectedIndex:
+                typeof attempt?.answer === "number" && Number.isInteger(attempt.answer)
+                  ? attempt.answer
+                  : null,
+              quizCorrectIndex:
+                typeof quizPayload.correct_index === "number" &&
+                Number.isInteger(quizPayload.correct_index)
+                  ? quizPayload.correct_index
+                  : null,
+            };
+          }
+
+          if (kind === "true_false") {
+            return {
+              ...progress,
+              trueFalseSelected: typeof attempt?.answer === "boolean" ? attempt.answer : null,
+            };
+          }
+
+          if (kind === "fill_blank") {
+            return {
+              ...progress,
+              fillBlankSelectedAnswer:
+                typeof attempt?.answer === "string" ? attempt.answer : null,
+            };
+          }
+
+          return progress;
+        })(),
       };
     }),
   );

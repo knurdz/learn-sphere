@@ -32,6 +32,7 @@ describe("learning feed payloads", () => {
     expect(scoreLearningAttempt("quiz", quiz, 2)).toMatchObject({
       score: 100,
       correct: true,
+      correctIndex: 2,
     });
     expect(
       scoreLearningAttempt(

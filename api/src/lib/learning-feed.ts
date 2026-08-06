@@ -121,6 +121,7 @@ export function scoreLearningAttempt(
     return {
       score: parsedAnswer.data === payload.correct_index ? 100 : 0,
       correct: parsedAnswer.data === payload.correct_index,
+      correctIndex: payload.correct_index,
       explanation: payload.explanation,
     };
   }
@@ -132,6 +133,7 @@ export function scoreLearningAttempt(
     return {
       score: parsedAnswer.data === payload.is_true ? 100 : 0,
       correct: parsedAnswer.data === payload.is_true,
+      correctAnswer: payload.is_true,
       explanation: payload.explanation,
     };
   }
@@ -144,6 +146,7 @@ export function scoreLearningAttempt(
     return {
       score: correct ? 100 : 0,
       correct,
+      correctAnswer: payload.answer,
       answer: payload.answer,
       explanation: payload.explanation,
     };

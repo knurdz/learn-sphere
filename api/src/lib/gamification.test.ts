@@ -100,6 +100,62 @@ describe("pickCoachMessage", () => {
     });
     expect(message.id).toBe("onboarding_create_space");
   });
+
+  it("does not show 'come back tomorrow' on first streak day when goal not met", () => {
+    const message = pickCoachMessage({
+      summary: {
+        currentStreak: 1,
+        longestStreak: 1,
+        totalXp: 0,
+        dailyGoal: 3,
+        todayEventCount: 1,
+        todayXp: 5,
+        onboardingStep: 3,
+        coachTour: {
+          version: 1,
+          steps: [
+            "welcome",
+            "feed",
+            "learn_tab",
+            "learn_live",
+            "learn_tools",
+            "library",
+            "settings",
+          ],
+        },
+        pendingTourSteps: [],
+      },
+    });
+    expect(message.id).toBe("daily_goal_progress");
+  });
+
+  it("shows daily goal met even with first streak day", () => {
+    const message = pickCoachMessage({
+      summary: {
+        currentStreak: 1,
+        longestStreak: 1,
+        totalXp: 0,
+        dailyGoal: 3,
+        todayEventCount: 3,
+        todayXp: 15,
+        onboardingStep: 3,
+        coachTour: {
+          version: 1,
+          steps: [
+            "welcome",
+            "feed",
+            "learn_tab",
+            "learn_live",
+            "learn_tools",
+            "library",
+            "settings",
+          ],
+        },
+        pendingTourSteps: [],
+      },
+    });
+    expect(message.id).toBe("daily_goal_met");
+  });
 });
 
 describe("streakAtRisk", () => {
@@ -149,5 +205,6 @@ describe("buildAnalytics", () => {
     expect(analytics.totalEvents).toBe(2);
     expect(analytics.byType.feed_attempt?.count).toBe(1);
     expect(analytics.buckets).toHaveLength(7);
+    expect(analytics.buckets.map((bucket) => bucket.label)).toContain("Wed");
   });
 });

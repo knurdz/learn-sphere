@@ -784,6 +784,18 @@ abstract class AppLocalizations {
   /// **'Daily goal'**
   String get progressDailyGoalTitle;
 
+  /// No description provided for @progressGoalCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Goal completed ({done}/{goal})'**
+  String progressGoalCompleted(int done, int goal);
+
+  /// No description provided for @progressExtraActivities.
+  ///
+  /// In en, this message translates to:
+  /// **'+{count} extra activities'**
+  String progressExtraActivities(int count);
+
   /// No description provided for @progressTodayXp.
   ///
   /// In en, this message translates to:

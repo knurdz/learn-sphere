@@ -56,6 +56,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   List<FeedItem> _items = [];
   String _spaceId = '';
   String _kind = 'all';
+  String _completionFilter = 'all';
   String? _error;
   String? _nextCursor;
   bool _busy = true;
@@ -72,8 +73,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
   bool _needsInteractiveBackfill(List<FeedItem> items) {
     if (_kind != 'all') return false;
-    final kinds = items.map((item) => item.kind).toSet();
-    return !kinds.contains('quiz') || !kinds.contains('meme');
+    final uncompletedKinds = items.where((item) => !item.progress.completed).map((item) => item.kind).toSet();
+    return !uncompletedKinds.contains('quiz') || !uncompletedKinds.contains('meme');
   }
 
   bool _kindSupportsGeneration(String kind) {
@@ -265,6 +266,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
   Widget _content(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final filteredItems = switch (_completionFilter) {
+      'learned' => _items.where((item) => item.progress.completed).toList(),
+      'unlearned' => _items.where((item) => !item.progress.completed).toList(),
+      _ => _items,
+    };
     if (_busy || _bootstrapping) {
       return _refreshableCenter(
         Column(
@@ -297,18 +303,38 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         ),
       );
     }
+    if (filteredItems.isEmpty) {
+      final message = _completionFilter == 'learned'
+          ? 'No learned cards in this view yet.'
+          : 'No unlearned cards in this view.';
+      return _refreshableCenter(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.filter_alt_off_outlined, size: 42, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(height: 10),
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: () => setState(() => _completionFilter = 'all'),
+              child: const Text('Show all cards'),
+            ),
+          ],
+        ),
+      );
+    }
     return Stack(
       children: [
         ListView.builder(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.only(bottom: 80),
-          itemCount: _items.length,
+          itemCount: filteredItems.length,
           itemBuilder: (context, index) => Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
             child: FeedCard(
-              key: ValueKey(_items[index].id),
-              item: _items[index],
+              key: ValueKey(filteredItems[index].id),
+              item: filteredItems[index],
               onProgress: _applyProgress,
             ),
           ),
@@ -417,6 +443,24 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                     onSelected: (_) => _changeFilter(kind: filter.value),
                   ),
                 )),
+                const SizedBox(width: 4),
+                ChoiceChip(
+                  label: const Text('All'),
+                  selected: _completionFilter == 'all',
+                  onSelected: (_) => setState(() => _completionFilter = 'all'),
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text('Unlearned'),
+                  selected: _completionFilter == 'unlearned',
+                  onSelected: (_) => setState(() => _completionFilter = 'unlearned'),
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text('Learned'),
+                  selected: _completionFilter == 'learned',
+                  onSelected: (_) => setState(() => _completionFilter = 'learned'),
+                ),
               ],
             ),
           ),
@@ -443,8 +487,72 @@ class _FeedCardState extends ConsumerState<FeedCard> {
   bool _busy = false;
   bool _showFlashcardBack = false;
   int? _selectedOption;
+  int? _correctOptionIndex;
+  bool? _selectedTrueFalse;
 
   FeedItem get item => widget.item;
+
+  bool get _attemptLocked => item.progress.completed;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncFromProgress();
+  }
+
+  @override
+  void didUpdateWidget(covariant FeedCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.item.progress != widget.item.progress || oldWidget.item.id != widget.item.id) {
+      _syncFromProgress();
+    }
+  }
+
+  void _syncFromProgress() {
+    _result = null;
+    _correct = false;
+    _selectedOption = null;
+    _correctOptionIndex = null;
+    _selectedTrueFalse = null;
+
+    if (item.kind == 'quiz') {
+      _selectedOption = item.progress.quizSelectedIndex;
+      _correctOptionIndex = item.progress.quizCorrectIndex;
+      if (item.progress.quizSelectedIndex != null && item.progress.quizCorrectIndex != null) {
+        _correct = item.progress.quizSelectedIndex == item.progress.quizCorrectIndex;
+        _result = _correct ? 'Correct.' : 'Not quite.';
+      } else if (item.progress.completed) {
+        _result = 'Saved to your progress.';
+        _correct = true;
+      }
+      return;
+    }
+
+    if (item.kind == 'fill_blank') {
+      if (item.progress.fillBlankSelectedAnswer != null) {
+        _answerController.text = item.progress.fillBlankSelectedAnswer!;
+      }
+      if (item.progress.completed) {
+        _result = 'Saved to your progress.';
+        _correct = (item.progress.lastScore ?? 0) >= 100;
+      }
+      return;
+    }
+
+    if (item.kind == 'true_false') {
+      _selectedTrueFalse = item.progress.trueFalseSelected;
+      if (item.progress.completed) {
+        _result = 'Saved to your progress.';
+        _correct = (item.progress.lastScore ?? 0) >= 100;
+      }
+      return;
+    }
+
+    if (item.progress.completed) {
+      _result = 'Saved to your progress.';
+      _correct = true;
+    }
+  }
 
   @override
   void dispose() {
@@ -478,15 +586,25 @@ class _FeedCardState extends ConsumerState<FeedCard> {
       if (!mounted) return;
       final correct = result['correct'] == true;
       final explanation = '${result['explanation'] ?? ''}'.trim();
+      final correctIndex = result['correctIndex'] as int?;
       setState(() {
         _correct = correct;
+        _correctOptionIndex = correctIndex ?? _correctOptionIndex;
         _result = correct
             ? (explanation.isEmpty ? 'Correct.' : 'Correct — $explanation')
             : (explanation.isEmpty ? 'Not quite. Try again.' : 'Keep going — $explanation');
       });
+      final selectedText = item.kind == 'fill_blank' ? _answerController.text.trim() : null;
       widget.onProgress(
         item.id,
-        Progress(completedAt: DateTime.now(), lastScore: result['score'] as num?),
+        Progress(
+          completedAt: DateTime.now(),
+          lastScore: result['score'] as num?,
+          quizSelectedIndex: item.kind == 'quiz' ? _selectedOption : null,
+          quizCorrectIndex: item.kind == 'quiz' ? correctIndex : null,
+          trueFalseSelected: item.kind == 'true_false' ? _selectedTrueFalse : null,
+          fillBlankSelectedAnswer: item.kind == 'fill_blank' ? selectedText : null,
+        ),
       );
       ProviderScope.containerOf(context, listen: false).read(gamificationProvider.notifier).refresh();
     } catch (error) {
@@ -512,7 +630,10 @@ class _FeedCardState extends ConsumerState<FeedCard> {
     await _submitAttempt(answer);
   }
 
-  Future<void> _submitTrueFalse(bool value) => _submitAttempt(value);
+  Future<void> _submitTrueFalse(bool value) {
+    _selectedTrueFalse = value;
+    return _submitAttempt(value);
+  }
 
   Widget _body(BuildContext context) {
     final payload = item.payload;
@@ -594,6 +715,16 @@ class _FeedCardState extends ConsumerState<FeedCard> {
     return item.kind == 'quiz' || item.kind == 'flashcard' || item.kind == 'true_false';
   }
 
+  _OptionFeedbackState _feedbackForOption(int optionIndex) {
+    if (!_attemptLocked || item.kind != 'quiz') return _OptionFeedbackState.none;
+    final selected = _selectedOption;
+    final correctIndex = _correctOptionIndex;
+    if (selected == null || correctIndex == null) return _OptionFeedbackState.none;
+    if (optionIndex == correctIndex) return _OptionFeedbackState.correct;
+    if (optionIndex == selected && selected != correctIndex) return _OptionFeedbackState.wrong;
+    return _OptionFeedbackState.none;
+  }
+
   Widget _buildStudyPanelContent(List<String> options) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -607,7 +738,8 @@ class _FeedCardState extends ConsumerState<FeedCard> {
                   label: entry.value,
                   index: entry.key,
                   selected: _selectedOption == entry.key,
-                  onTap: _busy ? null : () => setState(() => _selectedOption = entry.key),
+                  feedbackState: _feedbackForOption(entry.key),
+                  onTap: (_busy || _attemptLocked) ? null : () => setState(() => _selectedOption = entry.key),
                   onLightPanel: true,
                 ),
               ),
@@ -621,7 +753,7 @@ class _FeedCardState extends ConsumerState<FeedCard> {
                   label: 'True',
                   icon: Icons.check_rounded,
                   accent: const Color(0xFF047857),
-                  onPressed: _busy ? null : () => _submitTrueFalse(true),
+                  onPressed: (_busy || _attemptLocked) ? null : () => _submitTrueFalse(true),
                 ),
               ),
               const SizedBox(width: 12),
@@ -630,7 +762,7 @@ class _FeedCardState extends ConsumerState<FeedCard> {
                   label: 'False',
                   icon: Icons.close_rounded,
                   accent: const Color(0xFFB45309),
-                  onPressed: _busy ? null : () => _submitTrueFalse(false),
+                  onPressed: (_busy || _attemptLocked) ? null : () => _submitTrueFalse(false),
                 ),
               ),
             ],
@@ -657,7 +789,8 @@ class _FeedCardState extends ConsumerState<FeedCard> {
                   label: entry.value,
                   index: entry.key,
                   selected: _selectedOption == entry.key,
-                  onTap: _busy ? null : () => setState(() => _selectedOption = entry.key),
+                  feedbackState: _feedbackForOption(entry.key),
+                  onTap: (_busy || _attemptLocked) ? null : () => setState(() => _selectedOption = entry.key),
                 ),
               ),
         ],
@@ -669,7 +802,7 @@ class _FeedCardState extends ConsumerState<FeedCard> {
                 child: _ChoiceButton(
                   label: 'True',
                   icon: Icons.thumb_up_outlined,
-                  onPressed: _busy ? null : () => _submitTrueFalse(true),
+                  onPressed: (_busy || _attemptLocked) ? null : () => _submitTrueFalse(true),
                 ),
               ),
               const SizedBox(width: 12),
@@ -677,7 +810,7 @@ class _FeedCardState extends ConsumerState<FeedCard> {
                 child: _ChoiceButton(
                   label: 'False',
                   icon: Icons.thumb_down_outlined,
-                  onPressed: _busy ? null : () => _submitTrueFalse(false),
+                  onPressed: (_busy || _attemptLocked) ? null : () => _submitTrueFalse(false),
                 ),
               ),
             ],
@@ -687,9 +820,10 @@ class _FeedCardState extends ConsumerState<FeedCard> {
           const SizedBox(height: 18),
           TextField(
             controller: _answerController,
+            enabled: !_busy && !_attemptLocked,
             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
             cursorColor: Colors.white,
-            onSubmitted: _busy ? null : (_) => _submitAnswer(),
+            onSubmitted: (_busy || _attemptLocked) ? null : (_) => _submitAnswer(),
             decoration: InputDecoration(
               hintText: 'Type the missing word',
               hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
@@ -736,7 +870,10 @@ class _FeedCardState extends ConsumerState<FeedCard> {
     final options = item.payload['options'] is List
         ? (item.payload['options'] as List).map((value) => '$value').toList()
         : const <String>[];
-    final needsCheckButton = item.kind == 'quiz' || item.kind == 'fill_blank';
+    final needsCheckButton = (item.kind == 'quiz' || item.kind == 'fill_blank') && !_attemptLocked;
+    final primaryAction = needsCheckButton
+        ? (_busy ? null : _submitAnswer)
+        : (item.progress.completed ? null : _markLearned);
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -799,7 +936,7 @@ class _FeedCardState extends ConsumerState<FeedCard> {
                         )
                       : (isClean
                           ? FilledButton.icon(
-                              onPressed: needsCheckButton ? _submitAnswer : _markLearned,
+                              onPressed: primaryAction,
                               icon: Icon(needsCheckButton ? Icons.check : Icons.bookmark_add_outlined),
                               label: Text(needsCheckButton
                                   ? 'Check answer'
@@ -814,7 +951,7 @@ class _FeedCardState extends ConsumerState<FeedCard> {
                                       ? 'Learned'
                                       : 'Mark learned',
                               icon: needsCheckButton ? Icons.check : Icons.bookmark_add_outlined,
-                              onPressed: needsCheckButton ? _submitAnswer : _markLearned,
+                              onPressed: primaryAction,
                             )),
                 ),
                 const SizedBox(width: 10),
@@ -1118,6 +1255,7 @@ class _OptionTile extends StatelessWidget {
     required this.label,
     required this.index,
     required this.selected,
+    required this.feedbackState,
     required this.onTap,
     this.onLightPanel = false,
   });
@@ -1125,6 +1263,7 @@ class _OptionTile extends StatelessWidget {
   final String label;
   final int index;
   final bool selected;
+  final _OptionFeedbackState feedbackState;
   final VoidCallback? onTap;
   final bool onLightPanel;
 
@@ -1132,12 +1271,25 @@ class _OptionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final isCorrect = feedbackState == _OptionFeedbackState.correct;
+    final isWrong = feedbackState == _OptionFeedbackState.wrong;
+    final accent = isCorrect
+        ? const Color(0xFF047857)
+        : isWrong
+            ? const Color(0xFFB91C1C)
+            : theme.colorScheme.primary;
     
     if (onLightPanel) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Material(
-          color: selected ? theme.colorScheme.primaryContainer : (isDark ? const Color(0xFF1E293B) : Colors.white),
+          color: isCorrect
+              ? const Color(0xFFE8F0EA)
+              : isWrong
+                  ? const Color(0xFFFEE2E2)
+                  : selected
+                      ? theme.colorScheme.primaryContainer
+                      : (isDark ? const Color(0xFF1E293B) : Colors.white),
           borderRadius: BorderRadius.circular(14),
           child: InkWell(
             borderRadius: BorderRadius.circular(14),
@@ -1147,8 +1299,8 @@ class _OptionTile extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: selected ? theme.colorScheme.primary : theme.colorScheme.outline.withValues(alpha: 0.2),
-                  width: selected ? 2 : 1,
+                  color: (isCorrect || isWrong || selected) ? accent : theme.colorScheme.outline.withValues(alpha: 0.2),
+                  width: (isCorrect || isWrong || selected) ? 2 : 1,
                 ),
               ),
               child: Row(
@@ -1159,12 +1311,12 @@ class _OptionTile extends StatelessWidget {
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: selected ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest,
+                      color: (isCorrect || isWrong || selected) ? accent : theme.colorScheme.surfaceContainerHighest,
                     ),
                     child: Text(
                       String.fromCharCode(65 + index),
                       style: TextStyle(
-                        color: selected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface,
+                        color: (isCorrect || isWrong || selected) ? Colors.white : theme.colorScheme.onSurface,
                         fontWeight: FontWeight.w800,
                         fontSize: 13,
                       ),
@@ -1175,14 +1327,16 @@ class _OptionTile extends StatelessWidget {
                     child: Text(
                       label,
                       style: TextStyle(
-                        color: theme.colorScheme.onSurface,
+                        color: isWrong ? const Color(0xFF991B1B) : theme.colorScheme.onSurface,
                         height: 1.4,
-                        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                        fontWeight: (isCorrect || isWrong || selected) ? FontWeight.w700 : FontWeight.w500,
                         fontSize: 15,
                       ),
                     ),
                   ),
-                  if (selected) Icon(Icons.check_circle, color: theme.colorScheme.primary, size: 22),
+                  if (isCorrect) const Icon(Icons.check_circle, color: Color(0xFF047857), size: 22),
+                  if (isWrong) const Icon(Icons.cancel, color: Color(0xFFB91C1C), size: 22),
+                  if (!isCorrect && !isWrong && selected) Icon(Icons.check_circle, color: theme.colorScheme.primary, size: 22),
                 ],
               ),
             ),
@@ -1194,7 +1348,11 @@ class _OptionTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
-        color: Colors.white.withValues(alpha: selected ? 0.28 : 0.12),
+        color: isCorrect
+            ? const Color(0x40047857)
+            : isWrong
+                ? const Color(0x40B91C1C)
+                : Colors.white.withValues(alpha: selected ? 0.28 : 0.12),
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
@@ -1209,13 +1367,26 @@ class _OptionTile extends StatelessWidget {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: selected ? Colors.white : Colors.transparent,
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 2),
+                    color: (isCorrect || isWrong || selected) ? Colors.white : Colors.transparent,
+                    border: Border.all(
+                      color: isCorrect
+                          ? const Color(0xFF047857)
+                          : isWrong
+                              ? const Color(0xFFB91C1C)
+                              : Colors.white.withValues(alpha: 0.8),
+                      width: 2,
+                    ),
                   ),
                   child: Text(
                     String.fromCharCode(65 + index),
                     style: TextStyle(
-                      color: selected ? theme.colorScheme.primary : Colors.white,
+                      color: isCorrect
+                          ? const Color(0xFF047857)
+                          : isWrong
+                              ? const Color(0xFFB91C1C)
+                              : selected
+                                  ? theme.colorScheme.primary
+                                  : Colors.white,
                       fontWeight: FontWeight.w800,
                       fontSize: 12,
                     ),
@@ -1223,7 +1394,14 @@ class _OptionTile extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(label, style: const TextStyle(color: Colors.white, height: 1.35, fontWeight: FontWeight.w600)),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: isWrong ? const Color(0xFFFECACA) : Colors.white,
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -1233,6 +1411,8 @@ class _OptionTile extends StatelessWidget {
     );
   }
 }
+
+enum _OptionFeedbackState { none, correct, wrong }
 
 class _ChoiceButton extends StatelessWidget {
   const _ChoiceButton({required this.label, required this.icon, required this.onPressed});

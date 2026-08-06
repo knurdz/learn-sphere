@@ -14,6 +14,8 @@ class StreakChip extends ConsumerWidget {
     final streak = summary?.currentStreak ?? 0;
     final today = summary?.todayEventCount ?? 0;
     final goal = summary?.dailyGoal ?? 3;
+    final safeGoal = goal <= 0 ? 1 : goal;
+    final clampedToday = today.clamp(0, safeGoal);
     final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
 
@@ -36,7 +38,9 @@ class StreakChip extends ConsumerWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                l10n.coachDailyProgress(today, goal),
+                summary?.dailyGoalMet == true
+                    ? l10n.progressGoalCompleted(clampedToday, safeGoal)
+                    : l10n.coachDailyProgress(clampedToday, safeGoal),
                 style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
             ],

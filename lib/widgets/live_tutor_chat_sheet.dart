@@ -4,13 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../api_client.dart';
 import '../models.dart';
 import '../repositories.dart';
 import '../widgets/study_space_picker.dart';
 
-/// Text and voice Q&A tutor in a bottom sheet (used from Live tutor tab).
 class LiveTutorChatSheet extends ConsumerStatefulWidget {
   const LiveTutorChatSheet({
     required this.spaces,
@@ -30,20 +30,136 @@ class LiveTutorChatSheet extends ConsumerStatefulWidget {
 class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
   final _question = TextEditingController();
   final _recorder = AudioRecorder();
+  final _speech = stt.SpeechToText();
+
   List<ChatMessage> _messages = [];
+  List<TutorSessionSummary> _sessions = [];
   String? _sessionId;
   String? _error;
   String _status = '';
   bool _busy = false;
   bool _recording = false;
+  bool _loadingSessions = false;
+  bool _loadingMessages = false;
+  bool _speechReady = false;
+  final Set<String> _expandedSourceMessageIds = <String>{};
 
   StudyRepository get repository => ref.read(studyRepositoryProvider);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSessionsAndSelectLatest();
+  }
+
+  @override
+  void didUpdateWidget(covariant LiveTutorChatSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.spaceId != widget.spaceId) {
+      _resetForSpaceChange();
+      _loadSessionsAndSelectLatest();
+    }
+  }
 
   @override
   void dispose() {
     _question.dispose();
     _recorder.dispose();
+    _speech.stop();
     super.dispose();
+  }
+
+  void _resetForSpaceChange() {
+    setState(() {
+      _sessionId = null;
+      _sessions = [];
+      _messages = [];
+      _error = null;
+      _status = '';
+      _expandedSourceMessageIds.clear();
+    });
+  }
+
+  Future<void> _loadSessionsAndSelectLatest() async {
+    final spaceId = widget.spaceId;
+    if (spaceId == null) return;
+    setState(() {
+      _loadingSessions = true;
+      _error = null;
+    });
+    try {
+      final sessions = await repository.tutorSessions(spaceId);
+      if (!mounted) return;
+      final selected = sessions.isEmpty ? null : sessions.first.id;
+      setState(() {
+        _sessions = sessions;
+        _sessionId = selected;
+      });
+      if (selected != null) {
+        await _loadMessages(selected);
+      } else if (mounted) {
+        setState(() => _messages = []);
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    } finally {
+      if (mounted) setState(() => _loadingSessions = false);
+    }
+  }
+
+  Future<void> _loadMessages(String sessionId) async {
+    setState(() {
+      _loadingMessages = true;
+      _expandedSourceMessageIds.clear();
+      _error = null;
+    });
+    try {
+      final messages = await repository.tutorMessages(sessionId);
+      if (!mounted) return;
+      setState(() => _messages = messages);
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    } finally {
+      if (mounted) setState(() => _loadingMessages = false);
+    }
+  }
+
+  Future<void> _refreshSessionList() async {
+    final spaceId = widget.spaceId;
+    if (spaceId == null) return;
+    try {
+      final sessions = await repository.tutorSessions(spaceId);
+      if (!mounted) return;
+      setState(() => _sessions = sessions);
+    } catch (_) {}
+  }
+
+  Future<void> _createAndSelectNewSession() async {
+    final spaceId = widget.spaceId;
+    if (spaceId == null || _busy) return;
+    setState(() {
+      _busy = true;
+      _status = 'Starting a new chat…';
+      _error = null;
+    });
+    try {
+      final id = await repository.bridge.createTutorSession(spaceId);
+      if (!mounted) return;
+      await _refreshSessionList();
+      setState(() {
+        _sessionId = id;
+        _messages = [];
+      });
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _status = '';
+        });
+      }
+    }
   }
 
   Future<String> _ensureSession() async {
@@ -52,6 +168,7 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
     if (spaceId == null) throw const BridgeException('Create and select a study space first.');
     final id = await repository.bridge.createTutorSession(spaceId);
     setState(() => _sessionId = id);
+    await _refreshSessionList();
     return id;
   }
 
@@ -74,11 +191,17 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
           _messages = [..._messages, response.$1, response.$2];
           _question.clear();
         });
+        _refreshSessionList();
       }
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
     } finally {
-      if (mounted) setState(() { _busy = false; _status = ''; });
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _status = '';
+        });
+      }
     }
   }
 
@@ -89,10 +212,18 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
       return;
     }
     if (_recording) {
+      await _speech.stop();
       final path = await _recorder.stop();
-      setState(() { _recording = false; _status = 'Transcribing your question…'; _busy = true; });
+      setState(() {
+        _recording = false;
+        _status = 'Transcribing your question…';
+        _busy = true;
+      });
       if (path == null) {
-        setState(() { _busy = false; _status = ''; });
+        setState(() {
+          _busy = false;
+          _status = '';
+        });
         return;
       }
       try {
@@ -100,10 +231,9 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
         if (mounted) {
           setState(() {
             _messages = [..._messages, response.$1, response.$2];
-            if (response.$3 != null && response.$3!.trim().isNotEmpty) {
-              _status = 'You asked: ${response.$3}';
-            }
+            _status = response.$3 != null && response.$3!.trim().isNotEmpty ? 'You asked: ${response.$3}' : '';
           });
+          _refreshSessionList();
         }
       } catch (error) {
         if (mounted) setState(() => _error = '$error');
@@ -114,7 +244,9 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
             if (!_recording) _status = '';
           });
         }
-        try { await File(path).delete(); } catch (_) {}
+        try {
+          await File(path).delete();
+        } catch (_) {}
       }
       return;
     }
@@ -125,8 +257,29 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
     }
     final directory = await getTemporaryDirectory();
     final path = '${directory.path}/voice-question-${DateTime.now().millisecondsSinceEpoch}.m4a';
+    _speechReady = _speechReady || await _speech.initialize();
     await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
-    setState(() { _recording = true; _error = null; _status = 'Recording… tap again to send.'; });
+    if (_speechReady) {
+      // ignore: deprecated_member_use
+      await _speech.listen(
+        // ignore: deprecated_member_use
+        listenMode: stt.ListenMode.dictation,
+        // ignore: deprecated_member_use
+        partialResults: true,
+        onResult: (result) {
+          if (!mounted || !_recording) return;
+          final spoken = result.recognizedWords.trim();
+          setState(() {
+            _status = spoken.isEmpty ? 'Recording… tap again to send.' : 'You are saying: $spoken';
+          });
+        },
+      );
+    }
+    setState(() {
+      _recording = true;
+      _error = null;
+      _status = 'Recording… tap again to send.';
+    });
   }
 
   @override
@@ -164,54 +317,112 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
                 enabled: !_busy,
                 onSelected: (value) {
                   widget.onSpaceChanged(value);
-                  setState(() {
-                    _sessionId = null;
-                    _messages = [];
-                    _error = null;
-                  });
+                  _resetForSpaceChange();
                 },
               ),
             ),
             const SizedBox(height: 12),
-            Expanded(
-              child: _messages.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(28),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 58,
-                              height: 58,
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.primaryContainer,
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              child: Icon(Icons.chat_bubble_outline, color: primary),
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Ask about your material',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Answers include citations from your study space.',
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.bodyMedium?.copyWith(color: Colors.blueGrey),
-                            ),
-                          ],
-                        ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      key: ValueKey('thread-${_sessionId ?? 'none'}-${_sessions.length}'),
+                      initialValue: _sessionId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Thread',
+                        prefixIcon: Icon(Icons.history),
                       ),
-                    )
-                  : ListView.builder(
-                      controller: scrollController,
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                      itemCount: _messages.length,
-                      itemBuilder: (context, index) => TutorMessageBubble(message: _messages[index]),
+                      hint: const Text('Select a thread'),
+                      items: _sessions
+                          .map(
+                            (session) => DropdownMenuItem(
+                              value: session.id,
+                              child: Text(
+                                session.title,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: _busy || _loadingSessions
+                          ? null
+                          : (value) async {
+                              if (value == null || value == _sessionId) return;
+                              setState(() => _sessionId = value);
+                              await _loadMessages(value);
+                            },
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'New chat',
+                    onPressed: _busy ? null : _createAndSelectNewSession,
+                    icon: const Icon(Icons.add_comment_outlined),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: _loadingMessages || _loadingSessions
+                  ? const Center(child: CircularProgressIndicator())
+                  : _messages.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(28),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 58,
+                                  height: 58,
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primaryContainer,
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                  child: Icon(Icons.chat_bubble_outline, color: primary),
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'Ask about your material',
+                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Answers include citations from your study space.',
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.bodyMedium?.copyWith(color: Colors.blueGrey),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: scrollController,
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                          itemCount: _messages.length,
+                          itemBuilder: (context, index) {
+                            final message = _messages[index];
+                            final expanded = _expandedSourceMessageIds.contains(message.id);
+                            return TutorMessageBubble(
+                              message: message,
+                              sourcesExpanded: expanded,
+                              onToggleSources: () {
+                                setState(() {
+                                  if (expanded) {
+                                    _expandedSourceMessageIds.remove(message.id);
+                                  } else {
+                                    _expandedSourceMessageIds.add(message.id);
+                                  }
+                                });
+                              },
+                            );
+                          },
+                        ),
             ),
             if (_error != null)
               Padding(
@@ -270,9 +481,16 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
 }
 
 class TutorMessageBubble extends StatelessWidget {
-  const TutorMessageBubble({required this.message, super.key});
+  const TutorMessageBubble({
+    required this.message,
+    required this.sourcesExpanded,
+    required this.onToggleSources,
+    super.key,
+  });
 
   final ChatMessage message;
+  final bool sourcesExpanded;
+  final VoidCallback onToggleSources;
 
   @override
   Widget build(BuildContext context) {
@@ -306,11 +524,41 @@ class TutorMessageBubble extends StatelessWidget {
             ),
             if (!user && message.citations.isNotEmpty) ...[
               const SizedBox(height: 12),
-              Text('Sources', style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 11)),
-              const SizedBox(height: 4),
-              ...message.citations.map(
-                (citation) => Text(citation.label, style: TextStyle(color: primary, fontSize: 12)),
+              TextButton(
+                onPressed: onToggleSources,
+                style: TextButton.styleFrom(
+                  foregroundColor: primary,
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(0, 0),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  sourcesExpanded ? 'Hide sources' : 'View sources',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                ),
               ),
+              if (sourcesExpanded) ...[
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: message.citations
+                      .map(
+                        (citation) => Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.72),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            citation.label,
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF334155)),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
             ],
           ],
         ),

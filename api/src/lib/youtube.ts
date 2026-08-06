@@ -1,4 +1,6 @@
 import { fetchTranscript as fetchYouTubeTranscript } from "youtube-transcript";
+import ytdl from "@distube/ytdl-core";
+import { transcribeFile } from "@/lib/providers/groq";
 
 export type YouTubeVideoContext = {
   id: string;
@@ -102,6 +104,76 @@ async function fetchTranscriptFromPackage(videoId: string) {
   return "";
 }
 
+function mimeTypeFromFormat(
+  format: {
+    mimeType?: string;
+    container?: string;
+    codecs?: string;
+  } | null,
+) {
+  const mime = format?.mimeType?.split(";")[0]?.trim();
+  if (mime) return mime;
+
+  if (format?.container === "mp4") return "audio/mp4";
+  if (format?.container === "webm") return "audio/webm";
+  if (format?.container === "m4a") return "audio/mp4";
+  if (format?.container === "mp3") return "audio/mpeg";
+
+  return "audio/webm";
+}
+
+async function fetchTranscriptSegmentsFromAudio(
+  videoId: string,
+): Promise<YouTubeTranscriptSegment[]> {
+  const videoUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+  const info = await ytdl.getInfo(videoUrl);
+  const audioFormat = ytdl.chooseFormat(info.formats, {
+    quality: "highestaudio",
+    filter: "audioonly",
+  });
+
+  if (!audioFormat?.url) return [];
+
+  const audioResponse = await fetch(audioFormat.url, {
+    headers: { "User-Agent": "Mozilla/5.0" },
+  });
+  if (!audioResponse.ok) return [];
+
+  const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
+  if (audioBuffer.length === 0) return [];
+
+  const mimeType = mimeTypeFromFormat(audioFormat);
+  const extension = mimeType.includes("mp4")
+    ? "m4a"
+    : mimeType.includes("mpeg")
+      ? "mp3"
+      : "webm";
+  const segments = await transcribeFile({
+    buffer: audioBuffer,
+    fileName: `youtube-${videoId}.${extension}`,
+    mimeType,
+    language: "en",
+  });
+
+  return segments
+    .map((segment) => {
+      const text = segment.text.replace(/\s+/g, " ").trim();
+      if (!text) return null;
+      return {
+        text,
+        startSeconds:
+          typeof segment.startSeconds === "number" && Number.isFinite(segment.startSeconds)
+            ? segment.startSeconds
+            : 0,
+        endSeconds:
+          typeof segment.endSeconds === "number" && Number.isFinite(segment.endSeconds)
+            ? segment.endSeconds
+            : null,
+      };
+    })
+    .filter((segment): segment is YouTubeTranscriptSegment => segment !== null);
+}
+
 export async function fetchTranscriptSegments(
   videoId: string,
 ): Promise<YouTubeTranscriptSegment[]> {
@@ -135,9 +207,18 @@ export async function fetchTranscriptSegments(
   }
 
   const transcript = await fetchTranscript(videoId);
-  if (!transcript) return [];
+  if (transcript) {
+    return [{ text: transcript, startSeconds: 0, endSeconds: null }];
+  }
 
-  return [{ text: transcript, startSeconds: 0, endSeconds: null }];
+  try {
+    const segments = await fetchTranscriptSegmentsFromAudio(videoId);
+    if (segments.length > 0) return segments;
+  } catch {
+    // If both captions and audio transcription fail, return empty and let callers surface a message.
+  }
+
+  return [];
 }
 
 export async function getYouTubeVideoContext(value: string): Promise<YouTubeVideoContext> {
@@ -157,7 +238,7 @@ export async function getYouTubeVideoContext(value: string): Promise<YouTubeVide
 
   if (!transcript) {
     throw new Error(
-      "This YouTube video does not expose readable captions. Choose a video with captions enabled.",
+      "This YouTube video could not be read from captions or audio transcription. Try another video URL.",
     );
   }
 

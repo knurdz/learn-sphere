@@ -362,6 +362,16 @@ class AppLocalizationsKo extends AppLocalizations {
   String get progressDailyGoalTitle => 'Daily goal';
 
   @override
+  String progressGoalCompleted(int done, int goal) {
+    return 'Goal completed ($done/$goal)';
+  }
+
+  @override
+  String progressExtraActivities(int count) {
+    return '+$count extra activities';
+  }
+
+  @override
   String progressTodayXp(int xp) {
     return '+$xp XP today';
   }

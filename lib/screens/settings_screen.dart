@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth_controller.dart';
 import '../avatar_utils.dart';
+import '../gamification_provider.dart';
 import '../profile_repository.dart';
 import '../settings_provider.dart';
 import '../widgets/user_avatar.dart';
@@ -23,6 +24,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _avatarBusy = false;
   String? _avatarError;
 
+  String _formatAvatarError(Object error) {
+    if (error is FormatException) return error.message;
+
+    // Avoid surfacing raw exception text (which can include dev error codes).
+    final message = error.toString().toLowerCase();
+    final looksLikeNetworkIssue = message.contains('timeout') ||
+        message.contains('connection') ||
+        message.contains('socketexception') ||
+        message.contains('network') ||
+        message.contains('failed to fetch') ||
+        message.contains('connect');
+
+    if (looksLikeNetworkIssue) {
+      return 'Could not reach the server. Please check your internet connection and try again.';
+    }
+    return 'Could not update your avatar. Please try again.';
+  }
+
   Future<void> _pickPhoto() async {
     setState(() {
       _avatarBusy = true;
@@ -37,7 +56,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (file == null) return;
       await ref.read(profileProvider.notifier).uploadAvatar(file);
     } catch (error) {
-      if (mounted) setState(() => _avatarError = '$error');
+      if (mounted) setState(() => _avatarError = _formatAvatarError(error));
     } finally {
       if (mounted) setState(() => _avatarBusy = false);
     }
@@ -54,13 +73,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final url = diceBearAvatarUrl(seed: '$userId-${style.name}', style: style);
       await ref.read(profileProvider.notifier).setAvatarUrl(url);
     } catch (error) {
-      if (mounted) setState(() => _avatarError = '$error');
+      if (mounted) setState(() => _avatarError = _formatAvatarError(error));
     } finally {
       if (mounted) setState(() => _avatarBusy = false);
     }
   }
 
   Future<void> _signOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text('Are you sure you want to sign out of your account?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || confirmed != true) return;
     await ref.read(authControllerProvider.notifier).signOut();
     if (mounted) context.go('/login');
   }
@@ -69,6 +107,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     final profile = ref.watch(profileProvider);
+    final summary = ref.watch(gamificationProvider).valueOrNull;
     final theme = Theme.of(context);
     final user = Supabase.instance.client.auth.currentUser;
     final googlePhoto = user != null ? googlePhotoFromUser(user) : null;
@@ -184,7 +223,61 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         final userId = user?.id ?? 'guest';
                         final previewUrl = diceBearAvatarUrl(seed: '$userId-${style.name}', style: style, size: 128);
                         return InkWell(
-                          onTap: _avatarBusy ? null : () => _pickDiceBear(style),
+                          onTap: _avatarBusy
+                              ? null
+                              : () async {
+                                  final confirmed = await showDialog<bool>(
+                                    context: context,
+                                    builder: (dialogContext) => AlertDialog(
+                                      title: const Text('Use this avatar?'),
+                                      content: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          ClipOval(
+                                            child: SizedBox(
+                                              width: 64,
+                                              height: 64,
+                                              child: CachedNetworkImage(
+                                                imageUrl: previewUrl,
+                                                width: 64,
+                                                height: 64,
+                                                fit: BoxFit.cover,
+                                                placeholder: (_, __) => SizedBox(
+                                                  width: 64,
+                                                  height: 64,
+                                                  child: const Center(
+                                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                                  ),
+                                                ),
+                                                errorWidget: (_, __, ___) => SizedBox(
+                                                  width: 64,
+                                                  height: 64,
+                                                  child: const Center(child: Icon(Icons.person_outline)),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Text('This will update your profile picture.')
+                                        ],
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.of(dialogContext).pop(false),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        FilledButton(
+                                          onPressed: () => Navigator.of(dialogContext).pop(true),
+                                          child: const Text('Confirm'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+
+                                  if (!context.mounted) return;
+                                  if (confirmed != true) return;
+                                  await _pickDiceBear(style);
+                                },
                           borderRadius: BorderRadius.circular(32),
                           child: CircleAvatar(
                             radius: 32,
@@ -195,6 +288,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 width: 64,
                                 height: 64,
                                 fit: BoxFit.cover,
+                                placeholder: (_, __) => SizedBox(
+                                  width: 64,
+                                  height: 64,
+                                  child: Center(
+                                    child: SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                errorWidget: (_, __, ___) => Icon(
+                                  Icons.person_outline,
+                                  size: 40,
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
+                                ),
                               ),
                             ),
                           ),
@@ -203,6 +315,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+              side: BorderSide(color: theme.colorScheme.outline.withValues(alpha: 0.15)),
+            ),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              leading: CircleAvatar(
+                backgroundColor: theme.colorScheme.primaryContainer,
+                child: const Text('🔥'),
+              ),
+              title: Text(
+                summary == null
+                    ? 'Progress snapshot'
+                    : '${summary.currentStreak}-day streak · ${summary.totalXp} XP',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text(
+                summary == null
+                    ? 'Open Analytics to view your activity progress.'
+                    : summary.dailyGoalMet
+                        ? 'Daily goal completed. Keep going if you want extra XP.'
+                        : 'Today: ${summary.todayEventCount.clamp(0, summary.dailyGoal <= 0 ? 1 : summary.dailyGoal)}/${summary.dailyGoal <= 0 ? 1 : summary.dailyGoal}',
+              ),
+              trailing: FilledButton.tonal(
+                onPressed: () => context.push('/progress'),
+                child: const Text('Analytics'),
               ),
             ),
           ),
