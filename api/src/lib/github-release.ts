@@ -22,11 +22,10 @@ const DEFAULT_GITHUB_REPO = "knurdz/learn-sphere";
 /** Stable URL the landing page links to; it redirects to the newest APK asset. */
 export const ANDROID_DOWNLOAD_PATH = "/api/download/android";
 
-/** How long a resolved release list may be reused. */
-const RELEASE_CACHE_SECONDS = 60;
-
 /** Tags pulled from the Atom feed that we are willing to look up individually. */
 const MAX_TAG_LOOKUPS = 3;
+
+const GITHUB_FETCH: RequestInit = { cache: "no-store" };
 
 function releaseTime(release: GitHubRelease): number {
   const stamp = release.published_at ?? release.created_at;
@@ -34,20 +33,33 @@ function releaseTime(release: GitHubRelease): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+/** Version string from a release tag (e.g. `v0.1.2` → `0.1.2`). */
+export function versionLabelFromReleaseTag(tagName: string): string {
+  return tagName.replace(/^v/i, "");
+}
+
 /**
- * Version shown on the download button.
- *
- * The APK filename carries the app's own version, which is the number users see
- * in the installer and in-app; the release tag can drift from it. Prefer the
- * filename and fall back to the tag.
+ * Version shown on the download button when inferring from an asset name alone.
  */
 export function deriveVersionLabel(assetName: string, tagName: string): string {
   const fromAsset = assetName.match(/\d+\.\d+(?:\.\d+)?/)?.[0];
   if (fromAsset) return fromAsset;
-  return tagName.replace(/^v/i, "");
+  return versionLabelFromReleaseTag(tagName);
+}
+
+/** Canonical GitHub release asset URL: `/releases/download/{tag}/{filename}`. */
+export function githubReleaseAssetDownloadUrl(
+  repo: string,
+  tagName: string,
+  assetName: string,
+): string {
+  const tag = encodeURIComponent(tagName);
+  const file = encodeURIComponent(assetName);
+  return `https://github.com/${repo}/releases/download/${tag}/${file}`;
 }
 
 export function pickLatestPublishedApkUrl(
+  repo: string,
   releases: GitHubRelease[],
 ): { url: string; versionLabel: string } | null {
   // GitHub does not guarantee ordering, so sort newest-first before picking.
@@ -58,8 +70,8 @@ export function pickLatestPublishedApkUrl(
     const apk = release.assets.find((asset) => asset.name.toLowerCase().endsWith(".apk"));
     if (apk) {
       return {
-        url: apk.browser_download_url,
-        versionLabel: deriveVersionLabel(apk.name, release.tag_name),
+        url: githubReleaseAssetDownloadUrl(repo, release.tag_name, apk.name),
+        versionLabel: versionLabelFromReleaseTag(release.tag_name),
       };
     }
   }
@@ -105,7 +117,7 @@ async function fetchReleaseList(repo: string, token?: string): Promise<GitHubRel
   try {
     const response = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=20`, {
       headers: apiHeaders(token),
-      next: { revalidate: RELEASE_CACHE_SECONDS },
+      ...GITHUB_FETCH,
     });
     if (!response.ok) return [];
     const releases = (await response.json()) as GitHubRelease[];
@@ -123,7 +135,7 @@ async function fetchReleaseByTag(
   try {
     const response = await fetch(
       `https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`,
-      { headers: apiHeaders(token), next: { revalidate: RELEASE_CACHE_SECONDS } },
+      { headers: apiHeaders(token), ...GITHUB_FETCH },
     );
     if (!response.ok) return null;
     return (await response.json()) as GitHubRelease;
@@ -136,7 +148,7 @@ async function fetchAtomTags(repo: string): Promise<string[]> {
   try {
     const response = await fetch(`https://github.com/${repo}/releases.atom`, {
       headers: { Accept: "application/atom+xml", "User-Agent": "LearnSphere-Landing" },
-      next: { revalidate: RELEASE_CACHE_SECONDS },
+      ...GITHUB_FETCH,
     });
     if (!response.ok) return [];
     return parseReleaseTagsFromAtom(await response.text());
@@ -172,7 +184,7 @@ export async function resolveAndroidDownloadUrl(): Promise<AndroidDownloadInfo> 
   );
 
   const releases = [...listed, ...recovered.filter((r): r is GitHubRelease => r !== null)];
-  const picked = pickLatestPublishedApkUrl(releases);
+  const picked = pickLatestPublishedApkUrl(repo, releases);
   if (picked) {
     return { url: picked.url, versionLabel: picked.versionLabel, source: "github-apk" };
   }

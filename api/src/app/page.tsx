@@ -14,6 +14,9 @@ import {
 } from "./components/landing-sections";
 import { ANDROID_DOWNLOAD_PATH, resolveAndroidDownloadUrl } from "@/lib/github-release";
 
+/** Re-resolve the newest release tag for the download button label on each request. */
+export const revalidate = 60;
+
 export const metadata: Metadata = {
   title: "LearnSphere — Your AI study companion",
   description:
