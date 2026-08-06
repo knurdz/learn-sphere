@@ -4,9 +4,8 @@ import { chunkSourceText, type SourceSegment } from "@/lib/ingestion";
 import { buildMaterialStoragePath } from "@/lib/materials";
 import { embedTexts } from "@/lib/providers/gemini-embeddings";
 import {
-  fetchTranscriptSegments,
-  getYouTubeVideoContext,
   getYouTubeVideoId,
+  getYouTubeVideoSource,
   youtubeMaterialFileName,
   type YouTubeVideoContext,
 } from "@/lib/youtube";
@@ -113,8 +112,7 @@ export async function ensureYouTubeStudySource(
     throw new Error("Enter a valid YouTube watch, Shorts, or youtu.be URL.");
   }
 
-  const videoContext = await getYouTubeVideoContext(youtubeUrl);
-  const timedSegments = await fetchTranscriptSegments(videoId);
+  const { segments: timedSegments, ...videoContext } = await getYouTubeVideoSource(youtubeUrl);
   if (timedSegments.length === 0) {
     throw new Error(
       "This YouTube video could not be read from captions or audio transcription. Try another video URL.",

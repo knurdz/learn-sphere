@@ -15,12 +15,14 @@ class AppSettings {
     this.colorTheme = 0xFF059669,
     this.cardTone = AppCardTone.defaultTone,
     this.appLanguage = 'en',
+    this.showCoachMascot = true,
   });
 
   final AppThemeMode themeMode;
   final int colorTheme;
   final AppCardTone cardTone;
   final String appLanguage;
+  final bool showCoachMascot;
 
   Locale get appLocale => Locale(normalizeAppLanguageCode(appLanguage));
 
@@ -29,18 +31,21 @@ class AppSettings {
     int? colorTheme,
     AppCardTone? cardTone,
     String? appLanguage,
+    bool? showCoachMascot,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
       colorTheme: colorTheme ?? this.colorTheme,
       cardTone: cardTone ?? this.cardTone,
       appLanguage: appLanguage ?? this.appLanguage,
+      showCoachMascot: showCoachMascot ?? this.showCoachMascot,
     );
   }
 }
 
 class SettingsNotifier extends Notifier<AppSettings> {
   static const _languageKey = 'appLanguage';
+  static const _showCoachMascotKey = 'showCoachMascot';
 
   @override
   AppSettings build() {
@@ -50,6 +55,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       colorTheme: prefs.getInt('colorTheme') ?? 0xFF059669,
       cardTone: AppCardTone.values[prefs.getInt('cardTone') ?? 0],
       appLanguage: normalizeAppLanguageCode(prefs.getString(_languageKey)),
+      showCoachMascot: prefs.getBool(_showCoachMascotKey) ?? true,
     );
   }
 
@@ -66,6 +72,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setCardTone(AppCardTone tone) async {
     state = state.copyWith(cardTone: tone);
     await ref.read(sharedPreferencesProvider).setInt('cardTone', tone.index);
+  }
+
+  Future<void> setShowCoachMascot(bool enabled) async {
+    state = state.copyWith(showCoachMascot: enabled);
+    await ref.read(sharedPreferencesProvider).setBool(_showCoachMascotKey, enabled);
   }
 
   Future<void> setAppLanguage(String code) async {

@@ -104,22 +104,68 @@ async function fetchTranscriptFromPackage(videoId: string) {
   return "";
 }
 
-function mimeTypeFromFormat(
-  format: {
-    mimeType?: string;
-    container?: string;
-    codecs?: string;
-  } | null,
-) {
-  const mime = format?.mimeType?.split(";")[0]?.trim();
-  if (mime) return mime;
+type DownloadableFormat = {
+  url?: string;
+  itag?: number;
+  mimeType?: string;
+  container?: string;
+  codecs?: string;
+  hasAudio?: boolean;
+  hasVideo?: boolean;
+  contentLength?: string;
+};
 
-  if (format?.container === "mp4") return "audio/mp4";
+function mimeTypeFromFormat(format: DownloadableFormat | null) {
+  const mime = format?.mimeType?.split(";")[0]?.trim();
+  if (mime) {
+    // Progressive video+audio streams are still valid Whisper inputs as mp4/webm.
+    if (mime === "video/mp4") return "audio/mp4";
+    if (mime === "video/webm") return "audio/webm";
+    return mime;
+  }
+
+  if (format?.container === "mp4" || format?.container === "m4a") return "audio/mp4";
   if (format?.container === "webm") return "audio/webm";
-  if (format?.container === "m4a") return "audio/mp4";
   if (format?.container === "mp3") return "audio/mpeg";
 
   return "audio/webm";
+}
+
+function chooseDownloadableAudioFormat(formats: DownloadableFormat[]) {
+  try {
+    const audioOnly = ytdl.chooseFormat(formats as never, {
+      quality: "highestaudio",
+      filter: "audioonly",
+    }) as DownloadableFormat | undefined;
+    if (audioOnly?.url) return audioOnly;
+  } catch {
+    // Adaptive audio-only URLs often fail when ytdl cannot decipher them.
+  }
+
+  try {
+    const progressive = ytdl.chooseFormat(formats as never, {
+      quality: "lowest",
+      filter: (format: DownloadableFormat) => Boolean(format.hasAudio && format.url),
+    }) as DownloadableFormat | undefined;
+    if (progressive?.url) return progressive;
+  } catch {
+    // Fall through to manual selection.
+  }
+
+  const withAudioUrl = formats.filter((format) => Boolean(format.url && format.hasAudio));
+  const itag18 = withAudioUrl.find((format) => format.itag === 18);
+  if (itag18) return itag18;
+
+  const audioOnlyWithUrl = withAudioUrl.find((format) => format.hasAudio && !format.hasVideo);
+  if (audioOnlyWithUrl) return audioOnlyWithUrl;
+
+  return (
+    [...withAudioUrl].sort(
+      (a, b) =>
+        (Number(a.contentLength) || Number.POSITIVE_INFINITY) -
+        (Number(b.contentLength) || Number.POSITIVE_INFINITY),
+    )[0] || null
+  );
 }
 
 async function fetchTranscriptSegmentsFromAudio(
@@ -127,10 +173,7 @@ async function fetchTranscriptSegmentsFromAudio(
 ): Promise<YouTubeTranscriptSegment[]> {
   const videoUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
   const info = await ytdl.getInfo(videoUrl);
-  const audioFormat = ytdl.chooseFormat(info.formats, {
-    quality: "highestaudio",
-    filter: "audioonly",
-  });
+  const audioFormat = chooseDownloadableAudioFormat(info.formats as DownloadableFormat[]);
 
   if (!audioFormat?.url) return [];
 
@@ -174,6 +217,11 @@ async function fetchTranscriptSegmentsFromAudio(
     .filter((segment): segment is YouTubeTranscriptSegment => segment !== null);
 }
 
+function packageOffsetToSeconds(value: number) {
+  // youtube-transcript returns srv3 offsets/durations in milliseconds.
+  return value / 1000;
+}
+
 export async function fetchTranscriptSegments(
   videoId: string,
 ): Promise<YouTubeTranscriptSegment[]> {
@@ -186,11 +234,11 @@ export async function fetchTranscriptSegments(
           if (!text) return null;
           const startSeconds =
             typeof segment.offset === "number" && Number.isFinite(segment.offset)
-              ? segment.offset
+              ? packageOffsetToSeconds(segment.offset)
               : 0;
           const duration =
             typeof segment.duration === "number" && Number.isFinite(segment.duration)
-              ? segment.duration
+              ? packageOffsetToSeconds(segment.duration)
               : null;
           return {
             text,
@@ -221,7 +269,11 @@ export async function fetchTranscriptSegments(
   return [];
 }
 
-export async function getYouTubeVideoContext(value: string): Promise<YouTubeVideoContext> {
+export type YouTubeVideoSource = YouTubeVideoContext & {
+  segments: YouTubeTranscriptSegment[];
+};
+
+export async function getYouTubeVideoSource(value: string): Promise<YouTubeVideoSource> {
   const id = getYouTubeVideoId(value);
   if (!id) throw new Error("Enter a valid YouTube watch, Shorts, or youtu.be URL.");
 
@@ -249,5 +301,11 @@ export async function getYouTubeVideoContext(value: string): Promise<YouTubeVide
     title: metadata?.title || "YouTube lesson",
     author: metadata?.author_name || "YouTube creator",
     transcript,
+    segments,
   };
+}
+
+export async function getYouTubeVideoContext(value: string): Promise<YouTubeVideoContext> {
+  const { segments: _segments, ...context } = await getYouTubeVideoSource(value);
+  return context;
 }

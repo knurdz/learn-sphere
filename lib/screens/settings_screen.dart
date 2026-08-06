@@ -324,28 +324,51 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               borderRadius: BorderRadius.circular(24),
               side: BorderSide(color: theme.colorScheme.outline.withValues(alpha: 0.15)),
             ),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              leading: CircleAvatar(
-                backgroundColor: theme.colorScheme.primaryContainer,
-                child: const Text('🔥'),
-              ),
-              title: Text(
-                summary == null
-                    ? 'Progress snapshot'
-                    : '${summary.currentStreak}-day streak · ${summary.totalXp} XP',
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              subtitle: Text(
-                summary == null
-                    ? 'Open Analytics to view your activity progress.'
-                    : summary.dailyGoalMet
-                        ? 'Daily goal completed. Keep going if you want extra XP.'
-                        : 'Today: ${summary.todayEventCount.clamp(0, summary.dailyGoal <= 0 ? 1 : summary.dailyGoal)}/${summary.dailyGoal <= 0 ? 1 : summary.dailyGoal}',
-              ),
-              trailing: FilledButton.tonal(
-                onPressed: () => context.push('/progress'),
-                child: const Text('Analytics'),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: theme.colorScheme.primaryContainer,
+                        child: const Text('🔥'),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              summary == null
+                                  ? 'Progress snapshot'
+                                  : '${summary.currentStreak}-day streak · ${summary.totalXp} XP',
+                              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              summary == null
+                                  ? 'Open Analytics to view your activity progress.'
+                                  : summary.dailyGoalMet
+                                      ? 'Daily goal completed. Keep going if you want extra XP.'
+                                      : 'Today: ${summary.todayEventCount.clamp(0, summary.dailyGoal <= 0 ? 1 : summary.dailyGoal)}/${summary.dailyGoal <= 0 ? 1 : summary.dailyGoal}',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.tonalIcon(
+                    onPressed: () => context.push('/progress'),
+                    icon: const Icon(Icons.analytics_outlined, size: 18),
+                    label: const Text('Open Analytics'),
+                  ),
+                ],
               ),
             ),
           ),
@@ -443,6 +466,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       }
                     },
                   ),
+                ),
+                Divider(height: 1, color: theme.colorScheme.outline.withValues(alpha: 0.1)),
+                SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                  secondary: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.smart_toy_outlined, color: theme.colorScheme.primary),
+                  ),
+                  title: const Text('Show coach mascot', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Hide Sphere and coach tips on the main screens'),
+                  value: settings.showCoachMascot,
+                  onChanged: (enabled) {
+                    ref.read(settingsProvider.notifier).setShowCoachMascot(enabled);
+                  },
                 ),
               ],
             ),

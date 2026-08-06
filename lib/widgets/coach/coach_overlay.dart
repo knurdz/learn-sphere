@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../gamification_models.dart';
 import '../../gamification_provider.dart';
 import '../../l10n/app_localizations.dart';
+import '../../settings_provider.dart';
 import '../coach_tour_scope.dart';
 import 'coach_bubble.dart';
 import 'coach_character.dart';
@@ -80,6 +81,11 @@ class _CoachOverlayState extends ConsumerState<CoachOverlay> {
         });
       }
     });
+
+    final showCoachMascot = ref.watch(settingsProvider.select((s) => s.showCoachMascot));
+    if (!showCoachMascot) {
+      return widget.child;
+    }
 
     final summary = ref.watch(gamificationProvider).valueOrNull;
     final message = summary?.coachMessage;
