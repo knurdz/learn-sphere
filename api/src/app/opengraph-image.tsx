@@ -53,7 +53,7 @@ export default function OpenGraphImage() {
             An AI tutor that only teaches from your own notes
           </div>
           <div style={{ fontSize: 28, color: "#a1a1b5", maxWidth: 780 }}>
-            Live tutoring · grounded chat · practice feed · Android available now
+            Live tutoring, grounded chat, practice feed. Android available now.
           </div>
         </div>
       </div>

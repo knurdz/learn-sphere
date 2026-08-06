@@ -10,7 +10,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: {
     default: "LearnSphere: Your AI study companion",
-    template: "%s · LearnSphere",
+    template: "%s | LearnSphere",
   },
   description:
     "Talk to a live AI tutor, organize your course materials, and learn with quizzes and flashcards grounded in what you upload.",

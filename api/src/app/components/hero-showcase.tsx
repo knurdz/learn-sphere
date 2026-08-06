@@ -21,7 +21,7 @@ export function HeroShowcase({ downloadUrl, versionLabel }: HeroShowcaseProps) {
             Download for Android
           </a>
           <p className="hero-cta-note">
-            Direct APK · {versionNote} · Enable installs from unknown sources
+            Direct APK, {versionNote}. Enable installs from unknown sources.
           </p>
         </div>
       </div>

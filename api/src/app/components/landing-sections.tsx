@@ -268,8 +268,8 @@ export function DownloadCtaSection({
               Download for Android
             </a>
             <span className="download-cta-note">
-              Direct APK · {versionNote} · Enable installs from unknown sources · iOS &amp; Web
-              coming soon
+              Direct APK, {versionNote}. Enable installs from unknown sources. iOS and Web coming
+              soon.
             </span>
           </div>
         </div>
@@ -323,7 +323,7 @@ export function SiteFooter() {
             </svg>
           </span>
           <strong>Stack</strong>
-          <p>LiveKit · Gemini · Groq · Supabase</p>
+          <p>LiveKit, Gemini, Groq, Supabase</p>
         </div>
         <div>
           <span className="footer-icon" aria-hidden>
