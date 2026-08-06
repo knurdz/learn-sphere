@@ -111,7 +111,7 @@ function LibraryScreen() {
         <li>
           <span className="phone-lib-icon">PDF</span>
           <div>
-            <strong>Lecture 4 — Glycolysis</strong>
+            <strong>Lecture 4: Glycolysis</strong>
             <small>Indexed · 24 pages</small>
           </div>
         </li>
@@ -125,7 +125,7 @@ function LibraryScreen() {
         <li>
           <span className="phone-lib-icon phone-lib-icon--doc">DOC</span>
           <div>
-            <strong>Lab notes — week 3</strong>
+            <strong>Lab notes: week 3</strong>
             <small>Indexed · 6 pages</small>
           </div>
         </li>
@@ -139,7 +139,7 @@ function LibraryScreen() {
         <li className="phone-lib-list--muted">
           <span className="phone-lib-icon phone-lib-icon--doc">DOC</span>
           <div>
-            <strong>Study guide — midterm</strong>
+            <strong>Study guide: midterm</strong>
             <small>Indexed · 11 pages</small>
           </div>
         </li>

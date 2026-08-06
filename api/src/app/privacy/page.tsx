@@ -23,7 +23,7 @@ export default function PrivacyPage() {
 
         <h2>Your study spaces</h2>
         <p>
-          Materials you upload—PDFs, documents, recordings, and YouTube links—live inside a study
+          Materials you upload (PDFs, documents, recordings, and YouTube links) live inside a study
           space that only you can access. Access is enforced with row-level security in the
           database.
         </p>

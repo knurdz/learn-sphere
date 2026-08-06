@@ -17,11 +17,11 @@ import { ANDROID_DOWNLOAD_PATH, resolveAndroidDownloadUrl } from "@/lib/github-r
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "LearnSphere — Your AI study companion",
+  title: "LearnSphere: Your AI study companion",
   description:
-    "Live AI tutor on video, RAG-grounded chat, learning feed, study tools, Sphere coach, and 24 languages—built around your study spaces.",
+    "Live AI tutor on video, RAG-grounded chat, learning feed, study tools, Sphere coach, and 24 languages, built around your study spaces.",
   openGraph: {
-    title: "LearnSphere — Your AI study companion",
+    title: "LearnSphere: Your AI study companion",
     description:
       "Voice-first tutoring grounded in your PDFs, notes, and videos. Android available now.",
     type: "website",

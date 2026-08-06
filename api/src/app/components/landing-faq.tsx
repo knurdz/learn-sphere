@@ -9,7 +9,7 @@ const faqs = [
   },
   {
     q: "Is the live video tutor available for every language?",
-    a: "The UI and generated content support 24 languages. Live voice-to-voice tutoring depends on speech support for your locale—chat & voice always works as a fallback.",
+    a: "The UI and generated content support 24 languages. Live voice-to-voice tutoring depends on speech support for your locale. Chat and voice always work as a fallback.",
   },
   {
     q: "What happens to my uploaded files?",
