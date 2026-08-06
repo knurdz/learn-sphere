@@ -3,7 +3,6 @@ import { HeroShowcase } from "./components/hero-showcase";
 import { LandingNav } from "./components/landing-nav";
 import { FaqSection } from "./components/landing-faq";
 import {
-  AboutSection,
   DownloadCtaSection,
   FeatureCardsSection,
   HowItWorksSection,
@@ -29,44 +28,39 @@ export const metadata: Metadata = {
   },
 };
 
-function downloadLabel(versionLabel: string | null, short = false): string {
-  if (!versionLabel) return short ? "Download Android" : "Download Android APK";
-  return short ? `Download ${versionLabel}` : `Download Android ${versionLabel}`;
-}
-
 export default async function Home() {
-  // Only used for the version label; the buttons link to the redirect route so a
-  // fresh release is resolved at click time.
   const androidDownload = await resolveAndroidDownloadUrl();
   const downloadUrl = ANDROID_DOWNLOAD_PATH;
 
   return (
     <div className="landing">
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
       <div className="landing-glow landing-glow--tl" aria-hidden />
       <div className="landing-glow landing-glow--br" aria-hidden />
 
       <div className="landing-shell">
         <div id="hero" className="hero">
           <LandingNav downloadUrl={downloadUrl} />
-          <HeroShowcase downloadUrl={downloadUrl} />
+          <HeroShowcase downloadUrl={downloadUrl} versionLabel={androidDownload.versionLabel} />
         </div>
       </div>
 
       <MarqueeSection />
 
-      <div className="landing-shell landing-main">
+      <main id="main" className="landing-shell landing-main">
         <TrustRow />
         <FeatureCardsSection />
-        <AboutSection />
         <HowItWorksSection />
         <ToolsSection />
         <FaqSection />
         <DownloadCtaSection
           downloadUrl={downloadUrl}
-          downloadLabel={downloadLabel(androidDownload.versionLabel)}
+          versionLabel={androidDownload.versionLabel}
         />
         <SiteFooter />
-      </div>
+      </main>
     </div>
   );
 }
