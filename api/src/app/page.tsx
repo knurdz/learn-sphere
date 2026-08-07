@@ -59,7 +59,7 @@ export default async function Home() {
           downloadUrl={downloadUrl}
           versionLabel={androidDownload.versionLabel}
         />
-        <SiteFooter />
+        <SiteFooter downloadUrl={downloadUrl} />
       </main>
     </div>
   );
