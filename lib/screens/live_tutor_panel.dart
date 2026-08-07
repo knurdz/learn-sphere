@@ -142,7 +142,7 @@ class LiveTutorPanelState extends ConsumerState<LiveTutorPanel> {
         youtubeUrl: _youtube.text,
       );
       if (!mounted) return;
-      await Navigator.of(context).push(
+      await Navigator.of(context, rootNavigator: true).push(
         MaterialPageRoute<void>(
           fullscreenDialog: true,
           builder: (_) => LiveTutorCallScreen(session: session),

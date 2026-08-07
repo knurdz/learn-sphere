@@ -1170,19 +1170,33 @@ class _FeedbackBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final background = correct
+        ? (isDark ? const Color(0xFF064E3B) : const Color(0xFFE8F0EA))
+        : (isDark ? const Color(0xFF451A03) : const Color(0xFFFEF3C7));
+    final border = correct
+        ? (isDark ? const Color(0xFF047857) : const Color(0xFFBBF7D0))
+        : (isDark ? const Color(0xFFB45309) : const Color(0xFFFDE68A));
+    final foreground = correct
+        ? (isDark ? const Color(0xFFA7F3D0) : const Color(0xFF14532D))
+        : (isDark ? const Color(0xFFFDE68A) : const Color(0xFF78350F));
+    final iconColor = correct
+        ? (isDark ? const Color(0xFF34D399) : const Color(0xFF047857))
+        : (isDark ? const Color(0xFFFBBF24) : const Color(0xFFB45309));
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: correct ? const Color(0xFFE8F0EA) : const Color(0xFFFEF3C7),
+        color: background,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: correct ? const Color(0xFFBBF7D0) : const Color(0xFFFDE68A)),
+        border: Border.all(color: border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
             correct ? Icons.check_circle_outline : Icons.info_outline,
-            color: correct ? const Color(0xFF047857) : const Color(0xFFB45309),
+            color: iconColor,
             size: 20,
           ),
           const SizedBox(width: 10),
@@ -1190,7 +1204,7 @@ class _FeedbackBanner extends StatelessWidget {
             child: Text(
               message,
               style: TextStyle(
-                color: correct ? const Color(0xFF14532D) : const Color(0xFF78350F),
+                color: foreground,
                 height: 1.4,
                 fontWeight: FontWeight.w500,
               ),
@@ -1217,8 +1231,14 @@ class _StudyPollButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final background = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final border = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8E6);
+    final labelColor = isDark ? accent.withValues(alpha: 0.95) : accent;
+
     return Material(
-      color: Colors.white,
+      color: background,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onPressed,
@@ -1227,17 +1247,17 @@ class _StudyPollButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 18),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE2E8E6)),
+            border: Border.all(color: border),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: accent, size: 26),
+              Icon(icon, color: labelColor, size: 26),
               const SizedBox(height: 8),
               Text(
                 label,
                 style: TextStyle(
-                  color: accent,
+                  color: labelColor,
                   fontWeight: FontWeight.w700,
                   fontSize: 16,
                 ),
@@ -1274,22 +1294,30 @@ class _OptionTile extends StatelessWidget {
     final isCorrect = feedbackState == _OptionFeedbackState.correct;
     final isWrong = feedbackState == _OptionFeedbackState.wrong;
     final accent = isCorrect
-        ? const Color(0xFF047857)
+        ? (isDark ? const Color(0xFF34D399) : const Color(0xFF047857))
         : isWrong
-            ? const Color(0xFFB91C1C)
+            ? (isDark ? const Color(0xFFF87171) : const Color(0xFFB91C1C))
             : theme.colorScheme.primary;
+    final correctBackground = isDark ? const Color(0xFF064E3B) : const Color(0xFFE8F0EA);
+    final wrongBackground = isDark ? const Color(0xFF450A0A) : const Color(0xFFFEE2E2);
+    final labelColor = isCorrect
+        ? (isDark ? const Color(0xFFD1FAE5) : const Color(0xFF14532D))
+        : isWrong
+            ? (isDark ? const Color(0xFFFECACA) : const Color(0xFF991B1B))
+            : theme.colorScheme.onSurface;
+    final idleBackground = isDark ? const Color(0xFF273449) : Colors.white;
     
     if (onLightPanel) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Material(
           color: isCorrect
-              ? const Color(0xFFE8F0EA)
+              ? correctBackground
               : isWrong
-                  ? const Color(0xFFFEE2E2)
+                  ? wrongBackground
                   : selected
                       ? theme.colorScheme.primaryContainer
-                      : (isDark ? const Color(0xFF1E293B) : Colors.white),
+                      : idleBackground,
           borderRadius: BorderRadius.circular(14),
           child: InkWell(
             borderRadius: BorderRadius.circular(14),
@@ -1316,7 +1344,9 @@ class _OptionTile extends StatelessWidget {
                     child: Text(
                       String.fromCharCode(65 + index),
                       style: TextStyle(
-                        color: (isCorrect || isWrong || selected) ? Colors.white : theme.colorScheme.onSurface,
+                        color: (isCorrect || isWrong || selected)
+                            ? (isDark ? const Color(0xFF0C1222) : Colors.white)
+                            : theme.colorScheme.onSurface,
                         fontWeight: FontWeight.w800,
                         fontSize: 13,
                       ),
@@ -1327,15 +1357,15 @@ class _OptionTile extends StatelessWidget {
                     child: Text(
                       label,
                       style: TextStyle(
-                        color: isWrong ? const Color(0xFF991B1B) : theme.colorScheme.onSurface,
+                        color: labelColor,
                         height: 1.4,
                         fontWeight: (isCorrect || isWrong || selected) ? FontWeight.w700 : FontWeight.w500,
                         fontSize: 15,
                       ),
                     ),
                   ),
-                  if (isCorrect) const Icon(Icons.check_circle, color: Color(0xFF047857), size: 22),
-                  if (isWrong) const Icon(Icons.cancel, color: Color(0xFFB91C1C), size: 22),
+                  if (isCorrect) Icon(Icons.check_circle, color: accent, size: 22),
+                  if (isWrong) Icon(Icons.cancel, color: accent, size: 22),
                   if (!isCorrect && !isWrong && selected) Icon(Icons.check_circle, color: theme.colorScheme.primary, size: 22),
                 ],
               ),

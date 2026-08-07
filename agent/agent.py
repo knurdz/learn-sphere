@@ -186,8 +186,13 @@ async def tutor_session(ctx: JobContext) -> None:
                 return
             asyncio.create_task(_save_message(http, session_id, access_token, role, text))
 
-    avatar = bey.AvatarSession(avatar_id=os.getenv("BEY_AVATAR_ID") or None)
-    await avatar.start(session, room=ctx.room)
+    try:
+        avatar = bey.AvatarSession(avatar_id=os.getenv("BEY_AVATAR_ID") or None)
+        await avatar.start(session, room=ctx.room)
+    except Exception:
+        # Still teach over audio if Beyond Presence is down; the app shows video when
+        # the avatar track arrives and otherwise keeps an audio-only call.
+        logger.exception("Beyond Presence avatar failed to start; continuing audio-only")
 
     await session.start(TutorAgent(instructions=instructions), room=ctx.room)
     await session.say(greeting)

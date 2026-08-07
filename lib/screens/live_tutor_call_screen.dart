@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -23,12 +24,14 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
   EventsListener<RoomEvent>? _listener;
 
   VideoTrack? _avatarTrack;
+  bool _tutorJoined = false;
   String _status = 'Connecting…';
   String? _error;
   String _caption = '';
   bool _micEnabled = true;
   bool _leaving = false;
   Timer? _tutorJoinTimer;
+  Timer? _avatarVideoTimer;
 
   TranscriptionStreamReceiver? _transcriptionReceiver;
   StreamSubscription<ReceivedMessage>? _transcriptionSub;
@@ -49,6 +52,7 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
   @override
   void dispose() {
     _tutorJoinTimer?.cancel();
+    _avatarVideoTimer?.cancel();
     unawaited(_transcriptionSub?.cancel());
     unawaited(_transcriptionReceiver?.dispose());
     _captionScrollController.dispose();
@@ -62,13 +66,27 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
     return status.isGranted;
   }
 
+  bool get _hasRemoteParticipant => _room.remoteParticipants.isNotEmpty;
+
   void _scheduleTutorJoinHint() {
     _tutorJoinTimer?.cancel();
     _tutorJoinTimer = Timer(const Duration(seconds: 40), () {
-      if (!mounted || _leaving || _avatarTrack != null || _error != null) return;
+      if (!mounted || _leaving || _tutorJoined || _error != null) return;
       setState(() {
         _status =
             'Still waiting for your tutor. On your computer, start the worker:\ncd agent && .venv/bin/python agent.py dev';
+      });
+    });
+  }
+
+  void _scheduleAvatarVideoHint() {
+    _avatarVideoTimer?.cancel();
+    _avatarVideoTimer = Timer(const Duration(seconds: 25), () {
+      if (!mounted || _leaving || _avatarTrack != null || _error != null) return;
+      if (!_tutorJoined) return;
+      setState(() {
+        _status =
+            'Tutor is connected (audio). Avatar video is still starting — check BEY_API_KEY / BEY_AVATAR_ID in agent/.env.local.';
       });
     });
   }
@@ -155,15 +173,16 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
     _listener = listener;
 
     listener
-      ..on<TrackSubscribedEvent>((_) => _syncAvatarTrack())
-      ..on<TrackUnsubscribedEvent>((_) => _syncAvatarTrack())
-      ..on<ParticipantConnectedEvent>((_) => _syncAvatarTrack())
-      ..on<ParticipantDisconnectedEvent>((_) => _syncAvatarTrack())
+      ..on<TrackSubscribedEvent>((_) => _syncRoomState())
+      ..on<TrackUnsubscribedEvent>((_) => _syncRoomState())
+      ..on<ParticipantConnectedEvent>((_) => _syncRoomState())
+      ..on<ParticipantDisconnectedEvent>((_) => _syncRoomState())
       ..on<TranscriptionEvent>(_onTranscriptionFallback)
       ..on<RoomDisconnectedEvent>((event) {
         if (!mounted || _leaving) return;
         setState(() {
           _avatarTrack = null;
+          _tutorJoined = false;
           _status = 'The session ended.';
         });
       });
@@ -191,11 +210,11 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
 
     if (!mounted) return;
     setState(() => _status = 'Waking your tutor…');
-    _syncAvatarTrack();
+    _syncRoomState();
     _scheduleTutorJoinHint();
   }
 
-  void _syncAvatarTrack() {
+  void _syncRoomState() {
     VideoTrack? track;
     for (final participant in _room.remoteParticipants.values) {
       for (final publication in participant.videoTrackPublications) {
@@ -207,12 +226,25 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
       }
       if (track != null) break;
     }
-    if (!mounted || track == _avatarTrack) return;
+
+    final joined = _hasRemoteParticipant;
+    if (!mounted) return;
+    if (track == _avatarTrack && joined == _tutorJoined) return;
+
     setState(() {
       _avatarTrack = track;
+      if (joined && !_tutorJoined) {
+        _tutorJoined = true;
+        _tutorJoinTimer?.cancel();
+        _status = track == null ? 'Tutor connected — starting avatar…' : '';
+        if (track == null) {
+          _scheduleAvatarVideoHint();
+        }
+      }
       if (track != null) {
         _status = '';
         _tutorJoinTimer?.cancel();
+        _avatarVideoTimer?.cancel();
       }
     });
   }
@@ -253,9 +285,32 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
   }
 
   Future<void> _leave() async {
+    // Hang-up + close can both fire while disconnect is in flight; a second pop
+    // removes the Learn tab from go_router and leaves a black empty stack.
+    if (_leaving) return;
     _leaving = true;
-    await _room.disconnect();
-    if (mounted) Navigator.of(context).pop();
+    _tutorJoinTimer?.cancel();
+    _avatarVideoTimer?.cancel();
+
+    if (mounted) {
+      setState(() {
+        _avatarTrack = null;
+        _status = 'Ending session…';
+      });
+    }
+
+    try {
+      await _room.disconnect();
+    } catch (_) {}
+
+    if (!mounted) return;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      // Fallback if the fullscreen route is already gone.
+      GoRouter.of(context).go('/learn?tab=live');
+    }
   }
 
   @override
@@ -281,7 +336,7 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
                 child: Row(
                   children: [
                     IconButton.filledTonal(
-                      onPressed: _leave,
+                      onPressed: _leaving ? null : _leave,
                       style: IconButton.styleFrom(
                         foregroundColor: Colors.white,
                         backgroundColor: Colors.white24,
@@ -339,7 +394,7 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
                         icon: Icons.call_end,
                         color: const Color(0xFFDC2626),
                         iconColor: Colors.white,
-                        onPressed: _leave,
+                        onPressed: _leaving ? () {} : _leave,
                       ),
                     ],
                   ),

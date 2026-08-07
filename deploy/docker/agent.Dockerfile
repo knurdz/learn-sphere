@@ -10,7 +10,8 @@ RUN apt-get update \
 COPY agent/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY agent/agent.py ./
+# Keep in sync with imports in agent.py (e.g. gemma_channels).
+COPY agent/agent.py agent/gemma_channels.py ./
 
 ENV PYTHONUNBUFFERED=1
 
