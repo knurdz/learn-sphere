@@ -282,68 +282,77 @@ export function DownloadCtaSection({
   );
 }
 
-export function SiteFooter() {
+export function SiteFooter({ downloadUrl }: { downloadUrl: string }) {
   return (
     <footer className="site-footer">
       <div className="footer-top">
-        <div className="footer-brand">
-          <Image src="/learnsphere-icon-sm.webp" alt="" width={28} height={28} />
-          <span>LearnSphere</span>
+        <div className="footer-brand-block">
+          <div className="footer-brand">
+            <Image src="/learnsphere-icon-sm.webp" alt="" width={28} height={28} />
+            <span>LearnSphere</span>
+          </div>
+          <p className="footer-tagline">
+            An AI tutor grounded in your own notes, built for focused study.
+          </p>
         </div>
+
         <div className="footer-platforms">
-          <span>Android</span>
-          <span>iOS soon</span>
-          <span>Web soon</span>
+          <p className="footer-platforms-label">Get the app</p>
+          <div className="footer-platform-row">
+            <a className="footer-platform-btn footer-platform-btn--active" href={downloadUrl}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+                <path
+                  d="M8 2v8m0 0L5 7m3 3 3-3M3 12.5h10"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              Android
+            </a>
+            <span className="footer-platform-btn" aria-disabled="true">
+              iOS soon
+            </span>
+            <span className="footer-platform-btn" aria-disabled="true">
+              Web soon
+            </span>
+          </div>
         </div>
       </div>
+
       <div className="footer-divider" />
-      <div className="footer-contact">
-        <div>
-          <span className="footer-icon" aria-hidden>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <rect x="2" y="3.5" width="12" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
-              <path d="m2.5 4.5 5.5 4 5.5-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-            </svg>
-          </span>
-          <strong>Email</strong>
-          <p>
-            <a href="mailto:hello@learnsphere.app">hello@learnsphere.app</a>
-          </p>
-        </div>
-        <div>
-          <span className="footer-icon" aria-hidden>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path
-                d="M3 4.5h10v7H3z"
-                stroke="currentColor"
-                strokeWidth="1.4"
-                strokeLinejoin="round"
-              />
-              <path d="M3 6.5h10M6 4.5v7" stroke="currentColor" strokeWidth="1.4" />
-            </svg>
-          </span>
-          <strong>Stack</strong>
-          <p>LiveKit, Gemini, Groq, Supabase</p>
-        </div>
-        <div>
-          <span className="footer-icon" aria-hidden>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path
-                d="M8 2.5 13 5v3.5c0 2.8-2 4.6-5 5.5-3-.9-5-2.7-5-5.5V5l5-2.5Z"
-                stroke="currentColor"
-                strokeWidth="1.4"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </span>
-          <strong>Privacy</strong>
-          <p>
-            <a href="/privacy">Your spaces. Your materials. RLS-protected.</a>
-          </p>
+
+      <div className="footer-mid">
+        <nav className="footer-link-cols" aria-label="Footer">
+          <div className="footer-col">
+            <h3 className="footer-col-title">Explore</h3>
+            <a href="#features">Features</a>
+            <a href="#how-it-works">How it works</a>
+            <a href="#faq">FAQ</a>
+            <a href="#download">Download</a>
+          </div>
+          <div className="footer-col">
+            <h3 className="footer-col-title">Legal</h3>
+            <a href="/privacy">Privacy</a>
+          </div>
+        </nav>
+
+        <div className="footer-contact-card">
+          <h3 className="footer-col-title">Get in touch</h3>
+          <p>Questions or feedback? Send a note and we will get back to you.</p>
+          <a className="footer-email" href="mailto:hello@learnsphere.app">
+            hello@learnsphere.app
+          </a>
         </div>
       </div>
+
       <div className="footer-divider" />
-      <p className="footer-copy">© {new Date().getFullYear()} LearnSphere. All rights reserved.</p>
+
+      <div className="footer-bottom">
+        <p className="footer-copy">© {new Date().getFullYear()} LearnSphere. All rights reserved.</p>
+        <p className="footer-trust">Your uploads stay in your private study spaces.</p>
+      </div>
     </footer>
   );
 }
