@@ -1,0 +1,25 @@
+"""Strip Gemma-4 channel markers that LiveKit Inference leaves in TTS text."""
+
+from __future__ import annotations
+
+import re
+
+# Gemma-4 can emit <|channel>thought … <channel|> and <|channel>speech …
+# LiveKit only strips the thought channel; speech openers become spoken "speech".
+_CHANNEL_BLOCK = re.compile(
+    r"<\|channel>(?P<name>\w+)\s*.*?<channel\|>",
+    re.DOTALL,
+)
+_CHANNEL_OPEN = re.compile(r"<\|channel>\w+\s*")
+_CHANNEL_CLOSE = re.compile(r"<channel\|>")
+
+
+def scrub_gemma_channels(text: str) -> str:
+    """Remove Gemma channel wrappers so TTS never speaks the channel name."""
+    text = _CHANNEL_BLOCK.sub(
+        lambda match: "" if match.group("name") == "thought" else match.group(0),
+        text,
+    )
+    text = _CHANNEL_OPEN.sub("", text)
+    text = _CHANNEL_CLOSE.sub("", text)
+    return text.lstrip()

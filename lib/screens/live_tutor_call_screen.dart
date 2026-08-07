@@ -30,6 +30,16 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
   bool _leaving = false;
   Timer? _tutorJoinTimer;
 
+  TranscriptionStreamReceiver? _transcriptionReceiver;
+  StreamSubscription<ReceivedMessage>? _transcriptionSub;
+  DateTime? _lastStreamCaptionAt;
+
+  final List<String> _segmentOrder = [];
+  final Map<String, String> _segmentTexts = {};
+  bool? _captionFromLearner;
+
+  final ScrollController _captionScrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -39,6 +49,9 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
   @override
   void dispose() {
     _tutorJoinTimer?.cancel();
+    unawaited(_transcriptionSub?.cancel());
+    unawaited(_transcriptionReceiver?.dispose());
+    _captionScrollController.dispose();
     _listener?.dispose();
     _room.dispose();
     super.dispose();
@@ -58,6 +71,68 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
             'Still waiting for your tutor. On your computer, start the worker:\ncd agent && .venv/bin/python agent.py dev';
       });
     });
+  }
+
+  void _startTranscriptionReceiver() {
+    _transcriptionReceiver?.dispose();
+    _transcriptionReceiver = TranscriptionStreamReceiver(room: _room);
+    _transcriptionSub?.cancel();
+    _transcriptionSub = _transcriptionReceiver!.messages().listen(
+      _onStreamTranscription,
+      onError: (_, __) {},
+    );
+  }
+
+  void _resetCaptionBuffer({required bool fromLearner}) {
+    _segmentOrder.clear();
+    _segmentTexts.clear();
+    _captionFromLearner = fromLearner;
+  }
+
+  void _upsertSegment({required bool fromLearner, required String segmentId, required String text}) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+
+    if (_captionFromLearner != fromLearner) {
+      _resetCaptionBuffer(fromLearner: fromLearner);
+    }
+
+    if (!_segmentTexts.containsKey(segmentId)) {
+      _segmentOrder.add(segmentId);
+    }
+    _segmentTexts[segmentId] = trimmed;
+  }
+
+  String _buildCaptionText() {
+    if (_segmentOrder.isEmpty) return '';
+    final body = _segmentOrder.map((id) => _segmentTexts[id] ?? '').where((t) => t.isNotEmpty).join(' ');
+    if (body.isEmpty) return '';
+    return _captionFromLearner == true ? 'You: $body' : body;
+  }
+
+  void _applyCaptionUpdate({required bool fromStream}) {
+    final next = _buildCaptionText();
+    if (!mounted) return;
+    setState(() => _caption = next);
+    if (fromStream) {
+      _lastStreamCaptionAt = DateTime.now();
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_captionScrollController.hasClients) return;
+      _captionScrollController.animateTo(
+        _captionScrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  void _onStreamTranscription(ReceivedMessage message) {
+    final text = message.content.text.trim();
+    if (text.isEmpty) return;
+    final fromLearner = message.content is UserTranscript;
+    _upsertSegment(fromLearner: fromLearner, segmentId: message.id, text: text);
+    _applyCaptionUpdate(fromStream: true);
   }
 
   Future<void> _connect() async {
@@ -84,7 +159,7 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
       ..on<TrackUnsubscribedEvent>((_) => _syncAvatarTrack())
       ..on<ParticipantConnectedEvent>((_) => _syncAvatarTrack())
       ..on<ParticipantDisconnectedEvent>((_) => _syncAvatarTrack())
-      ..on<TranscriptionEvent>(_onTranscription)
+      ..on<TranscriptionEvent>(_onTranscriptionFallback)
       ..on<RoomDisconnectedEvent>((event) {
         if (!mounted || _leaving) return;
         setState(() {
@@ -100,6 +175,8 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
       if (mounted) setState(() => _error = 'Could not join the session: $error');
       return;
     }
+
+    _startTranscriptionReceiver();
 
     try {
       await _room.localParticipant?.setMicrophoneEnabled(true);
@@ -140,12 +217,17 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
     });
   }
 
-  void _onTranscription(TranscriptionEvent event) {
-    final segment = event.segments.isEmpty ? null : event.segments.last;
-    if (segment == null || segment.text.trim().isEmpty) return;
+  void _onTranscriptionFallback(TranscriptionEvent event) {
+    final streamFresh = _lastStreamCaptionAt != null &&
+        DateTime.now().difference(_lastStreamCaptionAt!) < const Duration(seconds: 2);
+    if (streamFresh) return;
+
+    if (event.segments.isEmpty) return;
     final fromLearner = event.participant is LocalParticipant;
-    if (!mounted) return;
-    setState(() => _caption = fromLearner ? 'You: ${segment.text}' : segment.text);
+    for (final segment in event.segments) {
+      _upsertSegment(fromLearner: fromLearner, segmentId: segment.id, text: segment.text);
+    }
+    _applyCaptionUpdate(fromStream: false);
   }
 
   Future<void> _toggleMic() async {
@@ -161,10 +243,7 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
     try {
       await _room.localParticipant?.setMicrophoneEnabled(next);
       if (mounted) {
-        setState(() {
-          _micEnabled = next;
-          if (next) _caption = '';
-        });
+        setState(() => _micEnabled = next);
       }
     } catch (_) {
       if (mounted) {
@@ -182,6 +261,7 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
   @override
   Widget build(BuildContext context) {
     final track = _avatarTrack;
+    final maxSubtitleHeight = MediaQuery.sizeOf(context).height * 0.32;
     return Scaffold(
       backgroundColor: const Color(0xFF0C1222),
       body: Stack(
@@ -229,17 +309,19 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
                   if (_caption.isNotEmpty)
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 20),
+                      constraints: BoxConstraints(maxHeight: maxSubtitleHeight),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       decoration: BoxDecoration(
                         color: Colors.black.withValues(alpha: 0.55),
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: Text(
-                        _caption,
-                        textAlign: TextAlign.center,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white, height: 1.35),
+                      child: SingleChildScrollView(
+                        controller: _captionScrollController,
+                        child: Text(
+                          _caption,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white, height: 1.35, fontSize: 15),
+                        ),
                       ),
                     ),
                   const SizedBox(height: 18),

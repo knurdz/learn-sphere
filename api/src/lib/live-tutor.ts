@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AppLanguageCode } from "@/lib/app-language";
 import {
-  languageGenerationDirective,
   languageSpokenTutorDirective,
   languageTutorDirective,
   localizedGreeting,
@@ -129,9 +128,7 @@ export async function buildTeachingInstructions(
     "\n\nLANGUAGE:\n" +
     languageTutorDirective(locale) +
     " " +
-    languageSpokenTutorDirective(locale) +
-    " " +
-    languageGenerationDirective(locale);
+    languageSpokenTutorDirective(locale);
 
   return (
     "You are the LearnSphere live tutor, appearing to the learner as a talking video avatar. " +

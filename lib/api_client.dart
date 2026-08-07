@@ -262,7 +262,11 @@ class BridgeApi {
       _dio.post(
         '/api/tutor/sessions/$sessionId/voice',
         data: dio.FormData.fromMap({
-          'audio': await dio.MultipartFile.fromFile(path, filename: 'voice-question.m4a'),
+          'audio': await dio.MultipartFile.fromFile(
+            path,
+            filename: 'voice-question.m4a',
+            contentType: dio.DioMediaType('audio', 'mp4'),
+          ),
         }),
         options: _options(),
       ),

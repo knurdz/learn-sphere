@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../api_client.dart';
 import '../models.dart';
@@ -28,9 +27,10 @@ class LiveTutorChatSheet extends ConsumerStatefulWidget {
 }
 
 class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
+  static const _minVoiceRecordingBytes = 2048;
+
   final _question = TextEditingController();
   final _recorder = AudioRecorder();
-  final _speech = stt.SpeechToText();
 
   List<ChatMessage> _messages = [];
   List<TutorSessionSummary> _sessions = [];
@@ -41,7 +41,6 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
   bool _recording = false;
   bool _loadingSessions = false;
   bool _loadingMessages = false;
-  bool _speechReady = false;
   final Set<String> _expandedSourceMessageIds = <String>{};
 
   StudyRepository get repository => ref.read(studyRepositoryProvider);
@@ -65,7 +64,6 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
   void dispose() {
     _question.dispose();
     _recorder.dispose();
-    _speech.stop();
     super.dispose();
   }
 
@@ -212,7 +210,6 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
       return;
     }
     if (_recording) {
-      await _speech.stop();
       final path = await _recorder.stop();
       setState(() {
         _recording = false;
@@ -223,7 +220,22 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
         setState(() {
           _busy = false;
           _status = '';
+          _error = 'No speech was captured. Try again.';
         });
+        return;
+      }
+      final file = File(path);
+      if (!await file.exists() || await file.length() < _minVoiceRecordingBytes) {
+        try {
+          await file.delete();
+        } catch (_) {}
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _status = '';
+            _error = 'No speech was captured. Try again.';
+          });
+        }
         return;
       }
       try {
@@ -257,24 +269,7 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
     }
     final directory = await getTemporaryDirectory();
     final path = '${directory.path}/voice-question-${DateTime.now().millisecondsSinceEpoch}.m4a';
-    _speechReady = _speechReady || await _speech.initialize();
     await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
-    if (_speechReady) {
-      // ignore: deprecated_member_use
-      await _speech.listen(
-        // ignore: deprecated_member_use
-        listenMode: stt.ListenMode.dictation,
-        // ignore: deprecated_member_use
-        partialResults: true,
-        onResult: (result) {
-          if (!mounted || !_recording) return;
-          final spoken = result.recognizedWords.trim();
-          setState(() {
-            _status = spoken.isEmpty ? 'Recording… tap again to send.' : 'You are saying: $spoken';
-          });
-        },
-      );
-    }
     setState(() {
       _recording = true;
       _error = null;

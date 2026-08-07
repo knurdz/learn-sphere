@@ -344,8 +344,8 @@ export function languageTutorDirective(code: AppLanguageCode): string {
 export function languageSpokenTutorDirective(code: AppLanguageCode): string {
   const def = getAppLanguageDefinition(code);
   return (
-    `Speak every reply aloud in ${def.englishLabel} (${code}). ` +
-    "Keep sentences concise and natural for text-to-speech."
+    `Reply in ${def.englishLabel} (${code}) using natural conversational phrasing. ` +
+    "Keep sentences concise for text-to-speech."
   );
 }
 

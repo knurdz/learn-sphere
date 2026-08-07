@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import os
+from collections.abc import AsyncGenerator, AsyncIterable
 
 import aiohttp
 from dotenv import load_dotenv
@@ -25,7 +26,10 @@ from livekit.agents import (
     TurnHandlingOptions,
     inference,
 )
+from livekit.agents.voice import agent as voice_agent
 from livekit.plugins import bey
+
+from gemma_channels import scrub_gemma_channels
 
 load_dotenv(".env.local")
 
@@ -46,6 +50,33 @@ FALLBACK_INSTRUCTIONS = (
     "learner as best you can from general knowledge. Keep spoken replies to a few sentences."
 )
 FALLBACK_GREETING = "Hello! I'm your LearnSphere tutor. What would you like to work on?"
+
+
+async def _scrub_text_stream(text: AsyncIterable[str]) -> AsyncGenerator[str, None]:
+    async for chunk in text:
+        yield scrub_gemma_channels(chunk)
+
+
+class TutorAgent(Agent):
+    """Live tutor that strips Gemma-4 channel markers before speech synthesis."""
+
+    async def tts_node(self, text, model_settings):
+        scrubbed = _scrub_text_stream(text)
+        async for frame in voice_agent.Agent.default.tts_node(self, scrubbed, model_settings):
+            yield frame
+
+    async def transcription_node(self, text, model_settings):
+        async def scrubbed() -> AsyncGenerator[str, None]:
+            async for delta in text:
+                if isinstance(delta, str):
+                    yield scrub_gemma_channels(delta)
+                else:
+                    yield delta
+
+        async for delta in voice_agent.Agent.default.transcription_node(
+            self, scrubbed(), model_settings
+        ):
+            yield delta
 
 
 def _tts_from_dispatch(dispatch: dict[str, str]) -> inference.TTS:
@@ -158,8 +189,8 @@ async def tutor_session(ctx: JobContext) -> None:
     avatar = bey.AvatarSession(avatar_id=os.getenv("BEY_AVATAR_ID") or None)
     await avatar.start(session, room=ctx.room)
 
-    await session.start(Agent(instructions=instructions), room=ctx.room)
-    await session.generate_reply(instructions=f'Greet the learner by saying: "{greeting}"')
+    await session.start(TutorAgent(instructions=instructions), room=ctx.room)
+    await session.say(greeting)
 
 
 if __name__ == "__main__":

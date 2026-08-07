@@ -3,6 +3,7 @@ import {
   APP_LANGUAGE_HEADER,
   getAppLanguageDefinition,
   languageGenerationDirective,
+  languageSpokenTutorDirective,
   liveVoiceErrorMessage,
   localizedGreeting,
   normalizeAppLanguageCode,
@@ -30,6 +31,11 @@ describe("app language", () => {
   it("adds generation directives for non-english locales", () => {
     expect(languageGenerationDirective("ta")).toContain("Tamil");
     expect(languageGenerationDirective("en")).toContain("English");
+  });
+
+  it("avoids Speak-every phrasing in spoken tutor directives", () => {
+    expect(languageSpokenTutorDirective("en")).not.toMatch(/^Speak every/i);
+    expect(languageSpokenTutorDirective("en")).toContain("Reply in English");
   });
 
   it("flags sinhala live voice as unsupported", () => {

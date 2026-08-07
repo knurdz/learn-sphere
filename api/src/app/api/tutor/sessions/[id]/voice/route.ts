@@ -3,6 +3,7 @@ import { answerTutorQuestion } from "@/lib/tutor";
 import { resolveAppLanguage } from "@/lib/app-language";
 import { transcribeFile } from "@/lib/providers/groq";
 import { getAuthContext } from "@/lib/supabase/server";
+import { isWhisperSilenceHallucination } from "@/lib/voice-transcription";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -43,15 +44,23 @@ export async function POST(
 
   const languageCode = resolveAppLanguage(request);
 
+  const mimeType =
+    audio.type && audio.type !== "application/octet-stream"
+      ? audio.type
+      : audio.name.endsWith(".m4a")
+        ? "audio/mp4"
+        : "audio/webm";
+  const fileName = audio.name || (mimeType === "audio/mp4" ? "voice-question.m4a" : "voice-question.webm");
+
   const transcriptSegments = await transcribeFile({
     buffer: Buffer.from(await audio.arrayBuffer()),
-    fileName: audio.name || "voice-question.webm",
-    mimeType: audio.type || "audio/webm",
+    fileName,
+    mimeType,
     language: languageCode,
   });
   const question = transcriptSegments.map((segment) => segment.text).join(" ").trim();
 
-  if (!question) {
+  if (!question || isWhisperSilenceHallucination(question, audio.size)) {
     return NextResponse.json({ error: "No speech was detected." }, { status: 422 });
   }
 
