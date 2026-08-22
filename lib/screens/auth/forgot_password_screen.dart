@@ -48,6 +48,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     return AuthScaffold(
       title: 'Reset your password',
       subtitle: 'We will email you a 6-digit code to choose a new password.',
+      footer: TextButton(
+        onPressed: _busy ? null : () => context.go('/login'),
+        child: const Text('Back to sign in'),
+      ),
       child: AuthCard(
         child: Form(
           key: _formKey,
@@ -72,10 +76,6 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             ],
           ),
         ),
-      ),
-      footer: TextButton(
-        onPressed: _busy ? null : () => context.go('/login'),
-        child: const Text('Back to sign in'),
       ),
     );
   }

@@ -215,7 +215,8 @@ class LiveTutorPanelState extends ConsumerState<LiveTutorPanel> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       DropdownButtonFormField<String>(
-                        value: _mode,
+                        key: ValueKey(_mode),
+                        initialValue: _mode,
                         decoration: const InputDecoration(
                           labelText: 'What do you want to do?',
                           prefixIcon: Icon(Icons.tune_outlined),

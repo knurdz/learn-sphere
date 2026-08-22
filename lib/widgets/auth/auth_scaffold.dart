@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../learnsphere_logo.dart';
+import '../responsive_page.dart';
 
 class AuthScaffold extends StatelessWidget {
   const AuthScaffold({
     required this.title,
     required this.subtitle,
-    required this.child,
     this.footer,
+    required this.child,
     super.key,
   });
 
@@ -23,27 +24,32 @@ class AuthScaffold extends StatelessWidget {
 
     return Scaffold(
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
-          children: [
-            const _AuthHeroBanner(),
-            const SizedBox(height: 28),
-            Text(
-              title,
-              style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
+        child: Center(
+          child: ResponsivePage(
+            maxWidth: AppBreakpoints.authMaxWidth,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
+              children: [
+                const _AuthHeroBanner(),
+                const SizedBox(height: 28),
+                Text(
+                  title,
+                  style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  subtitle,
+                  style: theme.textTheme.bodyLarge?.copyWith(color: muted, height: 1.45),
+                ),
+                const SizedBox(height: 28),
+                child,
+                if (footer != null) ...[
+                  const SizedBox(height: 20),
+                  footer!,
+                ],
+              ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              subtitle,
-              style: theme.textTheme.bodyLarge?.copyWith(color: muted, height: 1.45),
-            ),
-            const SizedBox(height: 28),
-            child,
-            if (footer != null) ...[
-              const SizedBox(height: 20),
-              footer!,
-            ],
-          ],
+          ),
         ),
       ),
     );
@@ -172,7 +178,7 @@ class GoogleSignInButton extends StatelessWidget {
       style: FilledButton.styleFrom(
         backgroundColor: Colors.white,
         foregroundColor: labelColor,
-        disabledBackgroundColor: Color(0xFFF1F5F9),
+        disabledBackgroundColor: const Color(0xFFF1F5F9),
         minimumSize: const Size.fromHeight(52),
         elevation: 0,
         shape: RoundedRectangleBorder(

@@ -69,6 +69,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return AuthScaffold(
       title: 'Welcome back.',
       subtitle: 'Pick up where your understanding left off.',
+      footer: TextButton(
+        onPressed: _busy ? null : () => context.go('/signup'),
+        child: const Text('New to LearnSphere? Create an account'),
+      ),
       child: AuthCard(
         child: Form(
           key: _formKey,
@@ -111,10 +115,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ],
           ),
         ),
-      ),
-      footer: TextButton(
-        onPressed: _busy ? null : () => context.go('/signup'),
-        child: const Text('New to LearnSphere? Create an account'),
       ),
     );
   }

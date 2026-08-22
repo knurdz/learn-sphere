@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -74,6 +74,14 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: config.isConfigured ? '/feed' : '/setup',
     refreshListenable: refreshNotifier,
+    errorBuilder: (context, state) => Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text('Page not found: ${state.uri.path}'),
+        ),
+      ),
+    ),
     redirect: (context, state) {
       if (!config.isConfigured) return state.matchedLocation == '/setup' ? null : '/setup';
       final loggedIn = Supabase.instance.client.auth.currentSession != null;

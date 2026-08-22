@@ -70,6 +70,10 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
       title: 'Verify your email',
       subtitle:
           'Enter the 6-digit code we sent to ${widget.email}. Check spam if it is missing, wait a minute, then tap Resend code.',
+      footer: TextButton(
+        onPressed: _busy ? null : () => context.go('/login'),
+        child: const Text('Back to sign in'),
+      ),
       child: AuthCard(
         child: Form(
           key: _formKey,
@@ -107,10 +111,6 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
             ],
           ),
         ),
-      ),
-      footer: TextButton(
-        onPressed: _busy ? null : () => context.go('/login'),
-        child: const Text('Back to sign in'),
       ),
     );
   }

@@ -78,6 +78,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     return AuthScaffold(
       title: 'Create your study space.',
       subtitle: 'Keep your materials, tutor, and practice in one focused place.',
+      footer: TextButton(
+        onPressed: _busy ? null : () => context.go('/login'),
+        child: const Text('Already have an account? Sign in'),
+      ),
       child: AuthCard(
         child: Form(
           key: _formKey,
@@ -134,10 +138,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             ],
           ),
         ),
-      ),
-      footer: TextButton(
-        onPressed: _busy ? null : () => context.go('/login'),
-        child: const Text('Already have an account? Sign in'),
       ),
     );
   }
