@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import 'api_client.dart';
 import 'cache_store.dart';
+import 'file_bytes.dart';
 import 'models.dart';
 
 final studyRepositoryProvider = Provider<StudyRepository>((ref) {
@@ -76,8 +75,8 @@ class StudyRepository {
   }) async {
     final user = client.auth.currentUser;
     if (user == null) throw const BridgeException('Sign in before uploading material.');
-    final bytes = file.bytes ?? await File(file.path!).readAsBytes();
-    if (bytes.isEmpty || bytes.length > 25 * 1024 * 1024) {
+    final bytes = await readPlatformFileBytes(file);
+    if (bytes == null || bytes.isEmpty || bytes.length > 25 * 1024 * 1024) {
       throw const BridgeException('Materials must be between 1 byte and 25 MB.');
     }
     final materialId = _uuid.v4();

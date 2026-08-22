@@ -1,5 +1,5 @@
-import 'dart:io';
-
+import 'package:cross_file/cross_file.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -247,22 +247,22 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
         });
         return;
       }
-      final file = File(path);
-      if (!await file.exists() || await file.length() < _minVoiceRecordingBytes) {
-        try {
-          await file.delete();
-        } catch (_) {}
-        if (mounted) {
-          setState(() {
-            _busy = false;
-            _status = '';
-            _error = 'No speech was captured. Try again.';
-          });
-        }
-        return;
-      }
       try {
-        final transcript = await repository.bridge.transcribeVoiceQuestion(path);
+        final bytes = await XFile(path).readAsBytes();
+        if (bytes.length < _minVoiceRecordingBytes) {
+          if (mounted) {
+            setState(() {
+              _busy = false;
+              _status = '';
+              _error = 'No speech was captured. Try again.';
+            });
+          }
+          return;
+        }
+        final transcript = await repository.bridge.transcribeVoiceQuestion(
+          bytes,
+          filename: _voiceFilename(path),
+        );
         if (!mounted) return;
         if (transcript.isEmpty) {
           setState(() {
@@ -286,10 +286,6 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
             _error = '$error';
           });
         }
-      } finally {
-        try {
-          await File(path).delete();
-        } catch (_) {}
       }
       return;
     }
@@ -298,14 +294,25 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
       setState(() => _error = 'Microphone permission was not granted.');
       return;
     }
-    final directory = await getTemporaryDirectory();
-    final path = '${directory.path}/voice-question-${DateTime.now().millisecondsSinceEpoch}.m4a';
-    await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+    if (kIsWeb) {
+      await _recorder.start(const RecordConfig(), path: 'voice-question.webm');
+    } else {
+      final directory = await getTemporaryDirectory();
+      final path = '${directory.path}/voice-question-${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+    }
     setState(() {
       _recording = true;
       _error = null;
       _status = 'Recording… tap again to review.';
     });
+  }
+
+  String _voiceFilename(String path) {
+    final lower = path.toLowerCase();
+    if (lower.contains('.webm')) return 'voice-question.webm';
+    if (lower.contains('.wav')) return 'voice-question.wav';
+    return 'voice-question.m4a';
   }
 
   @override

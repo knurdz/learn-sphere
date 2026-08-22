@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:livekit_client/livekit_client.dart';
@@ -62,6 +63,7 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
   }
 
   Future<bool> _ensureMicrophonePermission() async {
+    if (kIsWeb) return true;
     final status = await Permission.microphone.request();
     return status.isGranted;
   }
@@ -190,7 +192,9 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
       return;
     }
 
-    await AudioManager.instance.setSpeakerOutputPreferred(true);
+    if (!kIsWeb) {
+      await AudioManager.instance.setSpeakerOutputPreferred(true);
+    }
 
     final listener = _room.createListener();
     _listener = listener;

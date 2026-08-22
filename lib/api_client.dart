@@ -263,15 +263,18 @@ class BridgeApi {
     );
   }
 
-  Future<String> transcribeVoiceQuestion(String path) async {
+  Future<String> transcribeVoiceQuestion(
+    List<int> bytes, {
+    String filename = 'voice-question.m4a',
+  }) async {
     final result = await _handle(
       _dio.post(
         '/api/tutor/voice/transcribe',
         data: dio.FormData.fromMap({
-          'audio': await dio.MultipartFile.fromFile(
-            path,
-            filename: 'voice-question.m4a',
-            contentType: dio.DioMediaType('audio', 'mp4'),
+          'audio': dio.MultipartFile.fromBytes(
+            bytes,
+            filename: filename,
+            contentType: _audioMediaType(filename),
           ),
         }),
         options: _options(),
@@ -283,16 +286,17 @@ class BridgeApi {
 
   Future<(ChatMessage, ChatMessage, String?)> sendVoiceQuestion(
     String sessionId,
-    String path,
-  ) async {
+    List<int> bytes, {
+    String filename = 'voice-question.m4a',
+  }) async {
     final result = await _handle(
       _dio.post(
         '/api/tutor/sessions/$sessionId/voice',
         data: dio.FormData.fromMap({
-          'audio': await dio.MultipartFile.fromFile(
-            path,
-            filename: 'voice-question.m4a',
-            contentType: dio.DioMediaType('audio', 'mp4'),
+          'audio': dio.MultipartFile.fromBytes(
+            bytes,
+            filename: filename,
+            contentType: _audioMediaType(filename),
           ),
         }),
         options: _options(),
@@ -304,6 +308,12 @@ class BridgeApi {
       ChatMessage.fromMap(jsonMap(result['assistantMessage'])),
       result['transcript'] as String?,
     );
+  }
+
+  dio.DioMediaType _audioMediaType(String filename) {
+    if (filename.endsWith('.webm')) return dio.DioMediaType('audio', 'webm');
+    if (filename.endsWith('.wav')) return dio.DioMediaType('audio', 'wav');
+    return dio.DioMediaType('audio', 'mp4');
   }
 
   Future<List<StudyArtifact>> fetchStudyTools(String studySpaceId) async {

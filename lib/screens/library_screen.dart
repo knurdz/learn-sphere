@@ -119,7 +119,7 @@ class LibraryScreenState extends ConsumerState<LibraryScreen> {
     }
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: true,
-      withData: false,
+      withData: true,
       type: FileType.custom,
       allowedExtensions: ['pdf', 'docx', 'txt', 'mp3', 'wav', 'mp4'],
     );

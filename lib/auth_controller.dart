@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -55,10 +56,12 @@ class AuthController extends StateNotifier<AsyncValue<Session?>> {
   }
 
   Future<void> signInWithGoogle() async {
+    // Web must return to the current origin (e.g. http://localhost:8080). Add that
+    // URL in Supabase Auth → Redirect URLs. Native keeps the custom scheme.
     await client.auth.signInWithOAuth(
       OAuthProvider.google,
-      redirectTo: authRedirectUri,
-      authScreenLaunchMode: LaunchMode.externalApplication,
+      redirectTo: kIsWeb ? Uri.base.origin : authRedirectUri,
+      authScreenLaunchMode: kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication,
     );
   }
 
