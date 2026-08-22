@@ -1,11 +1,10 @@
-import 'dart:io';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'auth_controller.dart';
 import 'avatar_utils.dart';
+import 'file_bytes.dart';
 
 class UserProfile {
   const UserProfile({
@@ -125,7 +124,7 @@ class ProfileRepository {
   }
 
   Future<String> uploadAvatar(String userId, PlatformFile file) async {
-    final bytes = file.bytes ?? (file.path != null ? await File(file.path!).readAsBytes() : null);
+    final bytes = await readPlatformFileBytes(file);
     if (bytes == null || bytes.isEmpty) {
       throw const FormatException('Choose a non-empty image.');
     }

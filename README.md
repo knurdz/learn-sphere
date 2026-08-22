@@ -421,6 +421,17 @@ Debug builds allow cleartext HTTP to the reversed localhost port on Android.
 - There is no `adb reverse` on iOS. Use your Mac’s LAN IP and `pnpm dev -- -H 0.0.0.0 -p 3000`, or run the API on a hosted HTTPS URL.
 - Set `API_BASE_URL` in `.env.local` accordingly. Debug builds allow local networking via ATS (`NSAllowsLocalNetworking`).
 
+### Chrome (Flutter web)
+
+Pin a stable port so Google OAuth redirects match a URL you add in Supabase **Authentication → URL configuration → Redirect URLs** (e.g. `http://localhost:8080`):
+
+```bash
+cd api && pnpm dev
+flutter run -d chrome --web-port=8080
+```
+
+Keep `API_BASE_URL=http://127.0.0.1:3000` in `.env.local`. The bridge allows CORS from `localhost` / `127.0.0.1` so the web app can call `/api/*`.
+
 ## Verify locally
 
 ```bash
