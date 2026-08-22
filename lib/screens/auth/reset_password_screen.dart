@@ -82,14 +82,14 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                 controller: _password,
                 labelText: 'New password',
                 textInputAction: TextInputAction.next,
-                validator: (value) => value == null || value.length < 6 ? 'Use at least 6 characters.' : null,
+                validator: validateNewPassword,
               ),
               const SizedBox(height: 14),
               AuthPasswordField(
                 controller: _confirm,
                 labelText: 'Confirm password',
                 validator: (value) {
-                  if (value == null || value.length < 6) return 'Use at least 6 characters.';
+                  if (!isStrongPassword(value)) return strongPasswordHint;
                   if (value != _password.text) return 'Passwords do not match.';
                   return null;
                 },

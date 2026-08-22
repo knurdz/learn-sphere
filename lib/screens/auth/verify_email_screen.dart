@@ -68,7 +68,8 @@ class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
     final theme = Theme.of(context);
     return AuthScaffold(
       title: 'Verify your email',
-      subtitle: 'Enter the 6-digit code we sent to ${widget.email}.',
+      subtitle:
+          'Enter the 6-digit code we sent to ${widget.email}. Check spam if it is missing, wait a minute, then tap Resend code.',
       child: AuthCard(
         child: Form(
           key: _formKey,

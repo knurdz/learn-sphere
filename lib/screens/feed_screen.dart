@@ -44,6 +44,29 @@ List<String> _memeCaptionLines(Map<String, dynamic> payload) {
       .toList();
 }
 
+String _attemptFeedbackMessage({
+  required bool correct,
+  String? explanation,
+  String? correctAnswer,
+  String? selectedAnswer,
+}) {
+  if (correct) {
+    final extra = explanation == null || explanation.isEmpty ? '' : ' — $explanation';
+    return 'Correct.$extra';
+  }
+  final parts = <String>['Not quite.'];
+  if (selectedAnswer != null && selectedAnswer.trim().isNotEmpty) {
+    parts.add('Your answer: ${selectedAnswer.trim()}.');
+  }
+  if (correctAnswer != null && correctAnswer.trim().isNotEmpty) {
+    parts.add('Answer: ${correctAnswer.trim()}.');
+  }
+  if (explanation != null && explanation.trim().isNotEmpty) {
+    parts.add(explanation.trim());
+  }
+  return parts.join(' ');
+}
+
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
 
@@ -74,7 +97,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   bool _needsInteractiveBackfill(List<FeedItem> items) {
     if (_kind != 'all') return false;
     final uncompletedKinds = items.where((item) => !item.progress.completed).map((item) => item.kind).toSet();
-    return !uncompletedKinds.contains('quiz') || !uncompletedKinds.contains('meme');
+    return !uncompletedKinds.contains('quiz') ||
+        !uncompletedKinds.contains('meme') ||
+        !uncompletedKinds.contains('fill_blank') ||
+        !uncompletedKinds.contains('true_false');
   }
 
   bool _kindSupportsGeneration(String kind) {
@@ -171,6 +197,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
           _busy = false;
           _bootstrapping = false;
         });
+        _resetScroll();
+        _maybeGenerateSparseKind();
       }
     }
   }
@@ -203,7 +231,29 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       if (spaceId != null) _spaceId = spaceId;
       if (kind != null) _kind = kind;
     });
+    _resetScroll();
     await _load();
+  }
+
+  void _setCompletionFilter(String value) {
+    if (_completionFilter == value) return;
+    setState(() => _completionFilter = value);
+    _resetScroll();
+  }
+
+  void _resetScroll() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      _scrollController.jumpTo(0);
+    });
+  }
+
+  void _maybeGenerateSparseKind() {
+    if (_kind != 'fill_blank' && _kind != 'true_false') return;
+    final unlearned = _items.where((item) => !item.progress.completed).length;
+    if (unlearned <= 1) {
+      _generateMore();
+    }
   }
 
   /// Keeps the feed going once stored cards run out by asking the bridge for
@@ -316,7 +366,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 12),
             OutlinedButton(
-              onPressed: () => setState(() => _completionFilter = 'all'),
+              onPressed: () => _setCompletionFilter('all'),
               child: const Text('Show all cards'),
             ),
           ],
@@ -447,19 +497,19 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                 ChoiceChip(
                   label: const Text('All'),
                   selected: _completionFilter == 'all',
-                  onSelected: (_) => setState(() => _completionFilter = 'all'),
+                  onSelected: (_) => _setCompletionFilter('all'),
                 ),
                 const SizedBox(width: 8),
                 ChoiceChip(
                   label: const Text('Unlearned'),
                   selected: _completionFilter == 'unlearned',
-                  onSelected: (_) => setState(() => _completionFilter = 'unlearned'),
+                  onSelected: (_) => _setCompletionFilter('unlearned'),
                 ),
                 const SizedBox(width: 8),
                 ChoiceChip(
                   label: const Text('Learned'),
                   selected: _completionFilter == 'learned',
-                  onSelected: (_) => setState(() => _completionFilter = 'learned'),
+                  onSelected: (_) => _setCompletionFilter('learned'),
                 ),
               ],
             ),
@@ -518,12 +568,16 @@ class _FeedCardState extends ConsumerState<FeedCard> {
     if (item.kind == 'quiz') {
       _selectedOption = item.progress.quizSelectedIndex;
       _correctOptionIndex = item.progress.quizCorrectIndex;
-      if (item.progress.quizSelectedIndex != null && item.progress.quizCorrectIndex != null) {
-        _correct = item.progress.quizSelectedIndex == item.progress.quizCorrectIndex;
-        _result = _correct ? 'Correct.' : 'Not quite.';
-      } else if (item.progress.completed) {
-        _result = 'Saved to your progress.';
-        _correct = true;
+      if (item.progress.completed) {
+        if (item.progress.quizSelectedIndex != null && item.progress.quizCorrectIndex != null) {
+          _correct = item.progress.quizSelectedIndex == item.progress.quizCorrectIndex;
+        } else {
+          _correct = (item.progress.lastScore ?? 0) >= 100;
+        }
+        _result = _attemptFeedbackMessage(
+          correct: _correct,
+          explanation: item.progress.explanation,
+        );
       }
       return;
     }
@@ -533,8 +587,13 @@ class _FeedCardState extends ConsumerState<FeedCard> {
         _answerController.text = item.progress.fillBlankSelectedAnswer!;
       }
       if (item.progress.completed) {
-        _result = 'Saved to your progress.';
         _correct = (item.progress.lastScore ?? 0) >= 100;
+        _result = _attemptFeedbackMessage(
+          correct: _correct,
+          explanation: item.progress.explanation,
+          correctAnswer: item.progress.fillBlankCorrectAnswer,
+          selectedAnswer: _correct ? null : item.progress.fillBlankSelectedAnswer,
+        );
       }
       return;
     }
@@ -542,15 +601,21 @@ class _FeedCardState extends ConsumerState<FeedCard> {
     if (item.kind == 'true_false') {
       _selectedTrueFalse = item.progress.trueFalseSelected;
       if (item.progress.completed) {
-        _result = 'Saved to your progress.';
-        _correct = (item.progress.lastScore ?? 0) >= 100;
+        if (item.progress.trueFalseSelected != null && item.progress.trueFalseCorrect != null) {
+          _correct = item.progress.trueFalseSelected == item.progress.trueFalseCorrect;
+        } else {
+          _correct = (item.progress.lastScore ?? 0) >= 100;
+        }
+        final answerLabel = item.progress.trueFalseCorrect == null
+            ? null
+            : (item.progress.trueFalseCorrect! ? 'True' : 'False');
+        _result = _attemptFeedbackMessage(
+          correct: _correct,
+          explanation: item.progress.explanation,
+          correctAnswer: answerLabel == null ? null : 'The statement is $answerLabel.',
+        );
       }
       return;
-    }
-
-    if (item.progress.completed) {
-      _result = 'Saved to your progress.';
-      _correct = true;
     }
   }
 
@@ -566,7 +631,7 @@ class _FeedCardState extends ConsumerState<FeedCard> {
       await ProviderScope.containerOf(context, listen: false).read(studyRepositoryProvider).bridge.markFeedProgress(item.id);
       if (!mounted) return;
       setState(() {
-        _result = 'Saved to your progress.';
+        _result = null;
         _correct = true;
       });
       widget.onProgress(item.id, Progress(completedAt: DateTime.now(), lastScore: item.progress.lastScore));
@@ -587,12 +652,28 @@ class _FeedCardState extends ConsumerState<FeedCard> {
       final correct = result['correct'] == true;
       final explanation = '${result['explanation'] ?? ''}'.trim();
       final correctIndex = result['correctIndex'] as int?;
+      final correctAnswerRaw = result['correctAnswer'];
+      final fillBlankCorrect = item.kind == 'fill_blank'
+          ? '${result['correctAnswer'] ?? result['answer'] ?? ''}'.trim()
+          : '';
+      final trueFalseCorrect = item.kind == 'true_false' && correctAnswerRaw is bool
+          ? correctAnswerRaw
+          : null;
       setState(() {
         _correct = correct;
         _correctOptionIndex = correctIndex ?? _correctOptionIndex;
-        _result = correct
-            ? (explanation.isEmpty ? 'Correct.' : 'Correct — $explanation')
-            : (explanation.isEmpty ? 'Not quite. Try again.' : 'Keep going — $explanation');
+        _result = _attemptFeedbackMessage(
+          correct: correct,
+          explanation: explanation,
+          correctAnswer: item.kind == 'fill_blank'
+              ? (fillBlankCorrect.isEmpty ? null : fillBlankCorrect)
+              : item.kind == 'true_false' && trueFalseCorrect != null
+                  ? 'The statement is ${trueFalseCorrect ? 'True' : 'False'}.'
+                  : null,
+          selectedAnswer: item.kind == 'fill_blank' && !correct
+              ? _answerController.text.trim()
+              : null,
+        );
       });
       final selectedText = item.kind == 'fill_blank' ? _answerController.text.trim() : null;
       widget.onProgress(
@@ -603,7 +684,12 @@ class _FeedCardState extends ConsumerState<FeedCard> {
           quizSelectedIndex: item.kind == 'quiz' ? _selectedOption : null,
           quizCorrectIndex: item.kind == 'quiz' ? correctIndex : null,
           trueFalseSelected: item.kind == 'true_false' ? _selectedTrueFalse : null,
+          trueFalseCorrect: trueFalseCorrect,
           fillBlankSelectedAnswer: item.kind == 'fill_blank' ? selectedText : null,
+          fillBlankCorrectAnswer: item.kind == 'fill_blank'
+              ? (fillBlankCorrect.isEmpty ? null : fillBlankCorrect)
+              : null,
+          explanation: explanation.isEmpty ? null : explanation,
         ),
       );
       ProviderScope.containerOf(context, listen: false).read(gamificationProvider.notifier).refresh();
@@ -715,6 +801,18 @@ class _FeedCardState extends ConsumerState<FeedCard> {
     return item.kind == 'quiz' || item.kind == 'flashcard' || item.kind == 'true_false';
   }
 
+  _OptionFeedbackState _feedbackForTrueFalse(bool value) {
+    if (!_attemptLocked || item.kind != 'true_false') return _OptionFeedbackState.none;
+    final selected = _selectedTrueFalse ?? item.progress.trueFalseSelected;
+    final correctValue = item.progress.trueFalseCorrect;
+    if (selected == null || correctValue == null) {
+      return _OptionFeedbackState.none;
+    }
+    if (value == correctValue) return _OptionFeedbackState.correct;
+    if (value == selected && selected != correctValue) return _OptionFeedbackState.wrong;
+    return _OptionFeedbackState.none;
+  }
+
   _OptionFeedbackState _feedbackForOption(int optionIndex) {
     if (!_attemptLocked || item.kind != 'quiz') return _OptionFeedbackState.none;
     final selected = _selectedOption;
@@ -753,6 +851,8 @@ class _FeedCardState extends ConsumerState<FeedCard> {
                   label: 'True',
                   icon: Icons.check_rounded,
                   accent: const Color(0xFF047857),
+                  selected: _selectedTrueFalse == true,
+                  feedbackState: _feedbackForTrueFalse(true),
                   onPressed: (_busy || _attemptLocked) ? null : () => _submitTrueFalse(true),
                 ),
               ),
@@ -762,6 +862,8 @@ class _FeedCardState extends ConsumerState<FeedCard> {
                   label: 'False',
                   icon: Icons.close_rounded,
                   accent: const Color(0xFFB45309),
+                  selected: _selectedTrueFalse == false,
+                  feedbackState: _feedbackForTrueFalse(false),
                   onPressed: (_busy || _attemptLocked) ? null : () => _submitTrueFalse(false),
                 ),
               ),
@@ -802,6 +904,8 @@ class _FeedCardState extends ConsumerState<FeedCard> {
                 child: _ChoiceButton(
                   label: 'True',
                   icon: Icons.thumb_up_outlined,
+                  selected: _selectedTrueFalse == true,
+                  feedbackState: _feedbackForTrueFalse(true),
                   onPressed: (_busy || _attemptLocked) ? null : () => _submitTrueFalse(true),
                 ),
               ),
@@ -810,6 +914,8 @@ class _FeedCardState extends ConsumerState<FeedCard> {
                 child: _ChoiceButton(
                   label: 'False',
                   icon: Icons.thumb_down_outlined,
+                  selected: _selectedTrueFalse == false,
+                  feedbackState: _feedbackForTrueFalse(false),
                   onPressed: (_busy || _attemptLocked) ? null : () => _submitTrueFalse(false),
                 ),
               ),
@@ -1222,20 +1328,42 @@ class _StudyPollButton extends StatelessWidget {
     required this.icon,
     required this.accent,
     required this.onPressed,
+    this.selected = false,
+    this.feedbackState = _OptionFeedbackState.none,
   });
 
   final String label;
   final IconData icon;
   final Color accent;
   final VoidCallback? onPressed;
+  final bool selected;
+  final _OptionFeedbackState feedbackState;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final background = isDark ? const Color(0xFF1E293B) : Colors.white;
-    final border = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8E6);
-    final labelColor = isDark ? accent.withValues(alpha: 0.95) : accent;
+    final isCorrect = feedbackState == _OptionFeedbackState.correct;
+    final isWrong = feedbackState == _OptionFeedbackState.wrong;
+    final background = isCorrect
+        ? (isDark ? const Color(0xFF064E3B) : const Color(0xFFE8F0EA))
+        : isWrong
+            ? (isDark ? const Color(0xFF450A0A) : const Color(0xFFFEE2E2))
+            : selected
+                ? theme.colorScheme.primaryContainer
+                : (isDark ? const Color(0xFF1E293B) : Colors.white);
+    final border = isCorrect
+        ? (isDark ? const Color(0xFF34D399) : const Color(0xFF047857))
+        : isWrong
+            ? (isDark ? const Color(0xFFF87171) : const Color(0xFFB91C1C))
+            : selected
+                ? theme.colorScheme.primary
+                : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8E6));
+    final labelColor = isCorrect
+        ? (isDark ? const Color(0xFFD1FAE5) : const Color(0xFF14532D))
+        : isWrong
+            ? (isDark ? const Color(0xFFFECACA) : const Color(0xFF991B1B))
+            : (isDark ? accent.withValues(alpha: 0.95) : accent);
 
     return Material(
       color: background,
@@ -1247,12 +1375,20 @@ class _StudyPollButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 18),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: border),
+            border: Border.all(color: border, width: (isCorrect || isWrong || selected) ? 2 : 1),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: labelColor, size: 26),
+              Icon(
+                isCorrect
+                    ? Icons.check_circle
+                    : isWrong
+                        ? Icons.cancel
+                        : icon,
+                color: labelColor,
+                size: 26,
+              ),
               const SizedBox(height: 8),
               Text(
                 label,
@@ -1445,20 +1581,43 @@ class _OptionTile extends StatelessWidget {
 enum _OptionFeedbackState { none, correct, wrong }
 
 class _ChoiceButton extends StatelessWidget {
-  const _ChoiceButton({required this.label, required this.icon, required this.onPressed});
+  const _ChoiceButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.selected = false,
+    this.feedbackState = _OptionFeedbackState.none,
+  });
 
   final String label;
   final IconData icon;
   final VoidCallback? onPressed;
+  final bool selected;
+  final _OptionFeedbackState feedbackState;
 
   @override
   Widget build(BuildContext context) {
+    final isCorrect = feedbackState == _OptionFeedbackState.correct;
+    final isWrong = feedbackState == _OptionFeedbackState.wrong;
     return FilledButton.icon(
       onPressed: onPressed,
-      icon: Icon(icon, size: 18),
+      icon: Icon(
+        isCorrect
+            ? Icons.check_circle
+            : isWrong
+                ? Icons.cancel
+                : icon,
+        size: 18,
+      ),
       label: Text(label, overflow: TextOverflow.ellipsis),
       style: FilledButton.styleFrom(
-        backgroundColor: Colors.white.withValues(alpha: 0.2),
+        backgroundColor: isCorrect
+            ? const Color(0xFF047857)
+            : isWrong
+                ? const Color(0xFFB91C1C)
+                : selected
+                    ? Colors.white.withValues(alpha: 0.35)
+                    : Colors.white.withValues(alpha: 0.2),
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(vertical: 14),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

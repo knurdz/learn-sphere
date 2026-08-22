@@ -43,6 +43,13 @@ class GamificationNotifier extends AsyncNotifier<GamificationSummary?> {
     final updated = await _load();
     state = AsyncData(updated);
   }
+
+  Future<void> updateDailyGoal(int dailyGoal) async {
+    final api = ref.read(bridgeApiProvider);
+    await api.updateDailyGoal(dailyGoal, timezone: _timezone);
+    final updated = await _load();
+    state = AsyncData(updated);
+  }
 }
 
 final gamificationProvider =

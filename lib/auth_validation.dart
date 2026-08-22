@@ -5,6 +5,19 @@ bool isValidEmailOtp(String? code) {
   return RegExp(r'^\d{6}$').hasMatch(code.trim());
 }
 
+const strongPasswordHint = 'Use at least 8 characters with a letter and a number.';
+
+bool isStrongPassword(String? value) {
+  if (value == null) return false;
+  if (value.length < 8) return false;
+  return RegExp(r'[A-Za-z]').hasMatch(value) && RegExp(r'\d').hasMatch(value);
+}
+
+String? validateNewPassword(String? value) {
+  if (!isStrongPassword(value)) return strongPasswordHint;
+  return null;
+}
+
 bool looksLikeEmailNotConfirmed(Object error) {
   if (error is AuthException) {
     if (error.code == 'email_not_confirmed') return true;
@@ -36,7 +49,7 @@ String authErrorMessage(Object error) {
       case 'invalid_credentials':
         return 'Email or password is incorrect.';
       case 'weak_password':
-        return 'Choose a stronger password (at least 6 characters).';
+        return 'Choose a stronger password (at least 8 characters with a letter and a number).';
       case 'validation_failed':
         if (_looksLikeOtpError(message)) {
           return _otpMismatchMessage(message);

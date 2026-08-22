@@ -225,6 +225,13 @@ class BridgeApi {
     return '${jsonMap(result['session'])['id'] ?? ''}';
   }
 
+  Future<void> deleteTutorSession(String sessionId) async {
+    await _handle(
+      _delete('/api/tutor/sessions/$sessionId'),
+      (data) => jsonMap(data),
+    );
+  }
+
   Future<List<TutorSessionSummary>> fetchTutorSessions(String studySpaceId) async {
     return _handle(
       _get('/api/tutor/sessions/list', query: {'studySpaceId': studySpaceId}),
@@ -252,6 +259,24 @@ class BridgeApi {
       ChatMessage.fromMap(jsonMap(result['userMessage'])),
       ChatMessage.fromMap(jsonMap(result['assistantMessage'])),
     );
+  }
+
+  Future<String> transcribeVoiceQuestion(String path) async {
+    final result = await _handle(
+      _dio.post(
+        '/api/tutor/voice/transcribe',
+        data: dio.FormData.fromMap({
+          'audio': await dio.MultipartFile.fromFile(
+            path,
+            filename: 'voice-question.m4a',
+            contentType: dio.DioMediaType('audio', 'mp4'),
+          ),
+        }),
+        options: _options(),
+      ),
+      (data) => jsonMap(data),
+    );
+    return '${result['transcript'] ?? ''}'.trim();
   }
 
   Future<(ChatMessage, ChatMessage, String?)> sendVoiceQuestion(
@@ -367,6 +392,14 @@ class BridgeApi {
     return _handle(
       _patch('/api/gamification/tour', data: {'skip': true}, timezoneOverride: tz),
       (data) => CoachTourState.fromMap(jsonMap(jsonMap(data)['coachTour'])),
+    );
+  }
+
+  Future<int> updateDailyGoal(int dailyGoal, {String? timezone}) async {
+    final tz = timezone ?? this.timezone;
+    return _handle(
+      _patch('/api/gamification/goal', data: {'dailyGoal': dailyGoal}, timezoneOverride: tz),
+      (data) => (jsonMap(data)['dailyGoal'] as num?)?.toInt() ?? dailyGoal,
     );
   }
 

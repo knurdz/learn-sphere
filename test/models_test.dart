@@ -21,6 +21,27 @@ void main() {
     expect(item.progress.lastScore, 100);
   });
 
+  test('decodes completed fill-in and true/false answer keys', () {
+    final fill = Progress.fromMap({
+      'completedAt': '2026-08-03T11:00:00Z',
+      'lastScore': 0,
+      'fillBlankSelectedAnswer': 'water',
+      'fillBlankCorrectAnswer': 'sunlight',
+      'explanation': 'Light powers photosynthesis.',
+    });
+    expect(fill.fillBlankCorrectAnswer, 'sunlight');
+    expect(fill.explanation, contains('photosynthesis'));
+
+    final tf = Progress.fromMap({
+      'completedAt': '2026-08-03T11:00:00Z',
+      'lastScore': 100,
+      'trueFalseSelected': false,
+      'trueFalseCorrect': false,
+    });
+    expect(tf.trueFalseCorrect, isFalse);
+    expect(tf.trueFalseSelected, isFalse);
+  });
+
   test('maps material statuses and preserves errors', () {
     final material = MaterialItem.fromMap({
       'id': 'material-1',

@@ -119,6 +119,16 @@ export async function POST(
       throw new Error(assistantError.message);
     }
 
+    await context.supabase
+      .from("chat_sessions")
+      .update({
+        title:
+          session.title === "New tutor session" ? question.slice(0, 70) : session.title,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("user_id", context.user.id);
+
     return NextResponse.json({
       transcript: question,
       userMessage,

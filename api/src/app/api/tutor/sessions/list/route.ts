@@ -84,15 +84,17 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({
-    sessions: (sessions || []).map((session) => {
-      const previewMeta = previewBySession.get(session.id);
-      return {
-        id: session.id,
-        title: session.title || "New tutor session",
-        updatedAt: session.updated_at || session.created_at,
-        preview: previewMeta?.preview || "",
-        messageCount: previewMeta?.messageCount || 0,
-      };
-    }),
+    sessions: (sessions || [])
+      .map((session) => {
+        const previewMeta = previewBySession.get(session.id);
+        return {
+          id: session.id,
+          title: session.title || "New tutor session",
+          updatedAt: session.updated_at || session.created_at,
+          preview: previewMeta?.preview || "",
+          messageCount: previewMeta?.messageCount || 0,
+        };
+      })
+      .filter((session) => session.messageCount > 0),
   });
 }

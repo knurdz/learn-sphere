@@ -4,6 +4,7 @@ import {
   buildAnalytics,
   localDateKey,
   readTimezoneFromRequest,
+  analyticsRangeStart,
   type AnalyticsRange,
 } from "@/lib/gamification";
 import { getAuthContext } from "@/lib/supabase/server";
@@ -13,10 +14,7 @@ const querySchema = z.object({
 });
 
 function rangeStartDate(range: AnalyticsRange, today: string): string {
-  const days = range === "day" ? 0 : range === "week" ? 6 : 29;
-  const [year, month, day] = today.split("-").map(Number);
-  const utc = new Date(Date.UTC(year, month - 1, day - days));
-  return utc.toISOString().slice(0, 10);
+  return analyticsRangeStart(range, today);
 }
 
 export async function GET(request: Request) {

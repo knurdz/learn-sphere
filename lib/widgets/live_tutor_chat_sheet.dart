@@ -41,6 +41,7 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
   bool _recording = false;
   bool _loadingSessions = false;
   bool _loadingMessages = false;
+  bool _voicePreview = false;
   final Set<String> _expandedSourceMessageIds = <String>{};
 
   StudyRepository get repository => ref.read(studyRepositoryProvider);
@@ -75,6 +76,8 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
       _error = null;
       _status = '';
       _expandedSourceMessageIds.clear();
+      _voicePreview = false;
+      _question.clear();
     });
   }
 
@@ -133,30 +136,49 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
   }
 
   Future<void> _createAndSelectNewSession() async {
-    final spaceId = widget.spaceId;
-    if (spaceId == null || _busy) return;
+    if (_busy) return;
+    setState(() {
+      _sessionId = null;
+      _messages = [];
+      _error = null;
+      _status = '';
+      _expandedSourceMessageIds.clear();
+      _voicePreview = false;
+      _question.clear();
+    });
+  }
+
+  Future<void> _deleteCurrentSession() async {
+    final sessionId = _sessionId;
+    if (sessionId == null || _busy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete this chat?'),
+        content: const Text('This thread and its messages will be removed.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     setState(() {
       _busy = true;
-      _status = 'Starting a new chat…';
       _error = null;
     });
     try {
-      final id = await repository.bridge.createTutorSession(spaceId);
+      await repository.bridge.deleteTutorSession(sessionId);
       if (!mounted) return;
-      await _refreshSessionList();
       setState(() {
-        _sessionId = id;
+        _sessionId = null;
         _messages = [];
       });
+      await _refreshSessionList();
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
     } finally {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _status = '';
-        });
-      }
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -188,6 +210,7 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
         setState(() {
           _messages = [..._messages, response.$1, response.$2];
           _question.clear();
+          _voicePreview = false;
         });
         _refreshSessionList();
       }
@@ -239,23 +262,31 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
         return;
       }
       try {
-        final response = await repository.bridge.sendVoiceQuestion(await _ensureSession(), path);
-        if (mounted) {
+        final transcript = await repository.bridge.transcribeVoiceQuestion(path);
+        if (!mounted) return;
+        if (transcript.isEmpty) {
           setState(() {
-            _messages = [..._messages, response.$1, response.$2];
-            _status = response.$3 != null && response.$3!.trim().isNotEmpty ? 'You asked: ${response.$3}' : '';
+            _busy = false;
+            _status = '';
+            _error = 'No speech was detected. Try again.';
           });
-          _refreshSessionList();
+          return;
         }
+        setState(() {
+          _question.text = transcript;
+          _voicePreview = true;
+          _busy = false;
+          _status = 'Review the text, then send or cancel.';
+        });
       } catch (error) {
-        if (mounted) setState(() => _error = '$error');
-      } finally {
         if (mounted) {
           setState(() {
             _busy = false;
-            if (!_recording) _status = '';
+            _status = '';
+            _error = '$error';
           });
         }
+      } finally {
         try {
           await File(path).delete();
         } catch (_) {}
@@ -273,7 +304,7 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
     setState(() {
       _recording = true;
       _error = null;
-      _status = 'Recording… tap again to send.';
+      _status = 'Recording… tap again to review.';
     });
   }
 
@@ -356,6 +387,11 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
                     tooltip: 'New chat',
                     onPressed: _busy ? null : _createAndSelectNewSession,
                     icon: const Icon(Icons.add_comment_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Delete chat',
+                    onPressed: _busy || _sessionId == null ? null : _deleteCurrentSession,
+                    icon: const Icon(Icons.delete_outline),
                   ),
                 ],
               ),
@@ -462,9 +498,24 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
                   OutlinedButton.icon(
                     onPressed: _busy ? null : _toggleRecording,
                     icon: Icon(_recording ? Icons.stop_circle_outlined : Icons.mic_none_outlined),
-                    label: Text(_recording ? 'Stop and send' : 'Ask with microphone'),
+                    label: Text(_recording ? 'Stop and review' : 'Ask with microphone'),
                     style: _recording ? OutlinedButton.styleFrom(foregroundColor: Colors.red) : null,
                   ),
+                  if (_voicePreview) ...[
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: _busy
+                          ? null
+                          : () {
+                              setState(() {
+                                _question.clear();
+                                _voicePreview = false;
+                                _status = '';
+                              });
+                            },
+                      child: const Text('Cancel voice text'),
+                    ),
+                  ],
                 ],
               ),
             ),

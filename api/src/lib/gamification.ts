@@ -133,16 +133,52 @@ export function addLocalDays(dateKey: string, delta: number): string {
   return utc.toISOString().slice(0, 10);
 }
 
-function labelForDateKey(range: AnalyticsRange, dateKey: string): string {
-  if (range === "week") {
-    const parsed = new Date(`${dateKey}T00:00:00.000Z`);
-    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][parsed.getUTCDay()];
-  }
-  if (range === "month") {
-    const [_, month, day] = dateKey.split("-");
-    return `${month}/${day}`;
-  }
-  return dateKey.slice(5);
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const MONTH_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+/** Monday of the ISO week that contains [dateKey]. */
+export function startOfIsoWeek(dateKey: string): string {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  const weekday = utc.getUTCDay();
+  const offset = weekday === 0 ? -6 : 1 - weekday;
+  return addLocalDays(dateKey, offset);
+}
+
+export function analyticsRangeStart(range: AnalyticsRange, today: string): string {
+  if (range === "day") return startOfIsoWeek(today);
+  if (range === "week") return addLocalDays(startOfIsoWeek(today), -21);
+  const [year, month] = today.split("-").map(Number);
+  const start = new Date(Date.UTC(year, month - 1 - 11, 1));
+  return start.toISOString().slice(0, 10);
+}
+
+function weekdayLabel(dateKey: string): string {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  return WEEKDAY_SHORT[utc.getUTCDay()];
+}
+
+function compactDateLabel(dateKey: string): string {
+  const [, month, day] = dateKey.split("-");
+  return `${MONTH_SHORT[Number(month) - 1]} ${Number(day)}`;
+}
+
+function yearMonthKey(dateKey: string): string {
+  return dateKey.slice(0, 7);
 }
 
 export function computeStreakAfterActivity(
@@ -329,35 +365,12 @@ export function buildAnalytics(
 
   const buckets: AnalyticsBucket[] = [];
   if (range === "day") {
-    const hours = Array.from({ length: 24 }, (_, hour) => ({
-      label: `${hour.toString().padStart(2, "0")}:00`,
-      startDate: `${today}T${hour.toString().padStart(2, "0")}`,
-      eventCount: 0,
-      xp: 0,
-    }));
-    for (const event of events) {
-      if (event.local_date !== today) continue;
-      const hour = Number(
-        new Intl.DateTimeFormat("en-US", {
-          timeZone: tz,
-          hour: "numeric",
-          hour12: false,
-        }).format(new Date(event.occurred_at)),
-      );
-      const index = Number.isFinite(hour) ? hour : 0;
-      hours[index].eventCount += 1;
-      hours[index].xp += event.xp_awarded;
-    }
-    buckets.push(...hours.filter((bucket) => bucket.eventCount > 0 || range === "day"));
-    if (buckets.length === 0) buckets.push(...hours.slice(0, 6));
-  } else {
-    const dayCount = range === "week" ? 7 : 30;
-    const start = addLocalDays(today, -(dayCount - 1));
+    const start = startOfIsoWeek(today);
     const dayMap = new Map<string, AnalyticsBucket>();
-    for (let i = 0; i < dayCount; i += 1) {
+    for (let i = 0; i < 7; i += 1) {
       const key = addLocalDays(start, i);
       dayMap.set(key, {
-        label: labelForDateKey(range, key),
+        label: weekdayLabel(key),
         startDate: key,
         eventCount: 0,
         xp: 0,
@@ -370,6 +383,50 @@ export function buildAnalytics(
       bucket.xp += event.xp_awarded;
     }
     buckets.push(...dayMap.values());
+  } else if (range === "week") {
+    const thisMonday = startOfIsoWeek(today);
+    const weekMap = new Map<string, AnalyticsBucket>();
+    const weekStarts: string[] = [];
+    for (let w = 0; w < 4; w += 1) {
+      const weekStart = addLocalDays(thisMonday, (w - 3) * 7);
+      weekStarts.push(weekStart);
+      weekMap.set(weekStart, {
+        label: compactDateLabel(weekStart),
+        startDate: weekStart,
+        eventCount: 0,
+        xp: 0,
+      });
+    }
+    for (const event of events) {
+      const eventWeek = startOfIsoWeek(event.local_date);
+      const bucket = weekMap.get(eventWeek);
+      if (!bucket) continue;
+      bucket.eventCount += 1;
+      bucket.xp += event.xp_awarded;
+    }
+    buckets.push(...weekStarts.map((key) => weekMap.get(key)!));
+  } else {
+    const [year, month] = today.split("-").map(Number);
+    const monthMap = new Map<string, AnalyticsBucket>();
+    const monthKeys: string[] = [];
+    for (let i = 11; i >= 0; i -= 1) {
+      const cursor = new Date(Date.UTC(year, month - 1 - i, 1));
+      const key = cursor.toISOString().slice(0, 7);
+      monthKeys.push(key);
+      monthMap.set(key, {
+        label: MONTH_SHORT[cursor.getUTCMonth()],
+        startDate: `${key}-01`,
+        eventCount: 0,
+        xp: 0,
+      });
+    }
+    for (const event of events) {
+      const bucket = monthMap.get(yearMonthKey(event.local_date));
+      if (!bucket) continue;
+      bucket.eventCount += 1;
+      bucket.xp += event.xp_awarded;
+    }
+    buckets.push(...monthKeys.map((key) => monthMap.get(key)!));
   }
 
   return {

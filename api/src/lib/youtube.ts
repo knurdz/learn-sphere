@@ -290,7 +290,7 @@ export async function getYouTubeVideoSource(value: string): Promise<YouTubeVideo
 
   if (!transcript) {
     throw new Error(
-      "This YouTube video could not be read from captions or audio transcription. Try another video URL.",
+      "Study tools need a YouTube video with captions, or a Library video that is already indexed. This URL could not be read from captions or audio transcription.",
     );
   }
 

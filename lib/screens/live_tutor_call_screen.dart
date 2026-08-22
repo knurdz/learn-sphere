@@ -108,7 +108,7 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
   }
 
   void _upsertSegment({required bool fromLearner, required String segmentId, required String text}) {
-    final trimmed = text.trim();
+    final trimmed = _scrubSpeechMarkup(text).trim();
     if (trimmed.isEmpty) return;
 
     if (_captionFromLearner != fromLearner) {
@@ -125,7 +125,30 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
     if (_segmentOrder.isEmpty) return '';
     final body = _segmentOrder.map((id) => _segmentTexts[id] ?? '').where((t) => t.isNotEmpty).join(' ');
     if (body.isEmpty) return '';
-    return _captionFromLearner == true ? 'You: $body' : body;
+    final window = _lastSentences(body, 2);
+    return _captionFromLearner == true ? 'You: $window' : window;
+  }
+
+  String _lastSentences(String text, int count) {
+    final parts = text
+        .split(RegExp(r'(?<=[.!?])\s+'))
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.length <= count) return text.trim();
+    return parts.sublist(parts.length - count).join(' ');
+  }
+
+  String _scrubSpeechMarkup(String text) {
+    var next = text;
+    next = next.replaceAll(RegExp(r'<\|channel>\w+\s*'), '');
+    next = next.replaceAll(RegExp(r'<channel\|>'), '');
+    next = next.replaceAllMapped(
+      RegExp(r'''\{\s*["']?speech["']?\s*:\s*["']([^"']*)["']\s*\}''', caseSensitive: false),
+      (match) => match.group(1) ?? '',
+    );
+    next = next.replaceAll(RegExp(r'''^\s*\{?\s*["']?speech["']?\s*:?\s*["']?''', caseSensitive: false), '');
+    return next.trim();
   }
 
   void _applyCaptionUpdate({required bool fromStream}) {

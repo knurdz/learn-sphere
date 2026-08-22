@@ -228,7 +228,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Index a video in Library or paste a YouTube URL with captions enabled.",
+          "Study tools need a YouTube video with captions, or a Library video that is already indexed. Paste a captioned YouTube URL or index a video in Library first.",
       },
       { status: 400 },
     );

@@ -30,7 +30,7 @@ const _sessionModes = <({String value, String label, String hint})>[
   (
     value: 'youtube_tutor',
     label: 'Teach a YouTube video',
-    hint: 'Paste a link with captions; the tutor walks through it with you.',
+    hint: 'Paste a YouTube link with captions, or use a Library video that is already indexed.',
   ),
 ];
 

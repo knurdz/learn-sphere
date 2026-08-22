@@ -115,7 +115,7 @@ export async function ensureYouTubeStudySource(
   const { segments: timedSegments, ...videoContext } = await getYouTubeVideoSource(youtubeUrl);
   if (timedSegments.length === 0) {
     throw new Error(
-      "This YouTube video could not be read from captions or audio transcription. Try another video URL.",
+      "Study tools need a YouTube video with captions, or a Library video that is already indexed. This URL could not be read from captions or audio transcription.",
     );
   }
 

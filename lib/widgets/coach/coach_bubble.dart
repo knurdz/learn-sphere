@@ -17,6 +17,7 @@ class CoachBubble extends StatelessWidget {
     this.secondaryActionLabel,
     this.onSecondaryAction,
     this.secondaryActionBusy = false,
+    this.hideCtaForRoute,
   });
 
   final CoachMessage message;
@@ -30,6 +31,9 @@ class CoachBubble extends StatelessWidget {
   final String? secondaryActionLabel;
   final VoidCallback? onSecondaryAction;
   final bool secondaryActionBusy;
+
+  /// Hide the message CTA when it would navigate to this route (already there).
+  final String? hideCtaForRoute;
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +94,9 @@ class CoachBubble extends StatelessWidget {
                       )
                     : Text(primaryActionLabel!),
               ),
-            ] else if (message.ctaLabel != null && message.ctaRoute != null) ...[
+            ] else if (message.ctaLabel != null &&
+                message.ctaRoute != null &&
+                message.ctaRoute != hideCtaForRoute) ...[
               const SizedBox(height: 12),
               FilledButton(
                 onPressed: () {
