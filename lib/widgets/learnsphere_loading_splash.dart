@@ -99,7 +99,10 @@ class LearnSphereLoadingSplashApp extends StatelessWidget {
       theme: buildLearnSphereTheme(seedColor: _defaultSeed, brightness: Brightness.light),
       darkTheme: buildLearnSphereTheme(seedColor: _defaultSeed, brightness: Brightness.dark),
       themeMode: ThemeMode.system,
-      home: const LearnSphereLoadingSplash(),
+      onGenerateRoute: (_) => MaterialPageRoute<void>(
+        settings: const RouteSettings(name: '/'),
+        builder: (_) => const LearnSphereLoadingSplash(),
+      ),
     );
   }
 }

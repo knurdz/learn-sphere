@@ -1,5 +1,11 @@
 include: package:flutter_lints/flutter.yaml
 
+# iOS builds copy SPM packages under build/ios/SourcePackages; their example/
+# apps are not part of this project and must not be analyzed.
+analyzer:
+  exclude:
+    - build/**
+
 linter:
   rules:
     avoid_print: true

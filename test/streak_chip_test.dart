@@ -14,7 +14,7 @@ void main() {
         overrides: [
           gamificationProvider.overrideWith(
             () => _FakeGamificationNotifier(
-              GamificationSummary(
+              const GamificationSummary(
                 currentStreak: 5,
                 longestStreak: 7,
                 totalXp: 120,
@@ -22,17 +22,17 @@ void main() {
                 todayEventCount: 2,
                 todayXp: 18,
                 onboardingStep: 3,
-                coachTour: const CoachTourState(version: 1, steps: []),
-                pendingTourSteps: const [],
-                coachMessage: const CoachMessage(id: 'x', text: 'Hi'),
+                coachTour: CoachTourState(version: 1, steps: []),
+                pendingTourSteps: [],
+                coachMessage: CoachMessage(id: 'x', text: 'Hi'),
               ),
             ),
           ),
         ],
-        child: MaterialApp(
+        child: const MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: const Scaffold(body: StreakChip()),
+          home: Scaffold(body: StreakChip()),
         ),
       ),
     );

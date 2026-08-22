@@ -367,14 +367,20 @@ class _QuizSheetState extends State<_QuizSheet> {
                       '${entry.key + 1}. ${question['question'] ?? question['prompt'] ?? 'Question'}',
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
-                    ...options.asMap().entries.map(
-                      (option) => RadioListTile<int>(
-                        value: option.key,
-                        groupValue: widget.answers[key],
-                        onChanged: (value) => setState(() => widget.answers[key] = value ?? 0),
-                        title: Text(option.value),
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
+                    RadioGroup<int>(
+                      groupValue: widget.answers[key],
+                      onChanged: (value) => setState(() => widget.answers[key] = value ?? 0),
+                      child: Column(
+                        children: [
+                          ...options.asMap().entries.map(
+                            (option) => RadioListTile<int>(
+                              value: option.key,
+                              title: Text(option.value),
+                              contentPadding: EdgeInsets.zero,
+                              dense: true,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

@@ -11,6 +11,7 @@ import '../avatar_utils.dart';
 import '../gamification_provider.dart';
 import '../profile_repository.dart';
 import '../settings_provider.dart';
+import '../widgets/responsive_page.dart';
 import '../widgets/user_avatar.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -148,9 +149,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        children: [
+      body: ResponsivePage(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          children: [
           Padding(
             padding: const EdgeInsets.only(left: 8, bottom: 8),
             child: Text('ACCOUNT', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: theme.colorScheme.primary, letterSpacing: 1.2)),
@@ -259,23 +261,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                                 width: 64,
                                                 height: 64,
                                                 fit: BoxFit.cover,
-                                                placeholder: (_, __) => SizedBox(
+                                                placeholder: (_, __) => const SizedBox(
                                                   width: 64,
                                                   height: 64,
-                                                  child: const Center(
+                                                  child: Center(
                                                     child: CircularProgressIndicator(strokeWidth: 2),
                                                   ),
                                                 ),
-                                                errorWidget: (_, __, ___) => SizedBox(
+                                                errorWidget: (_, __, ___) => const SizedBox(
                                                   width: 64,
                                                   height: 64,
-                                                  child: const Center(child: Icon(Icons.person_outline)),
+                                                  child: Center(child: Icon(Icons.person_outline)),
                                                 ),
                                               ),
                                             ),
                                           ),
                                           const SizedBox(height: 12),
-                                          Text('This will update your profile picture.')
+                                          const Text('This will update your profile picture.'),
                                         ],
                                       ),
                                       actions: [
@@ -592,6 +594,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const SizedBox(height: 20),
         ],
+        ),
       ),
     );
   }

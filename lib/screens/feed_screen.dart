@@ -10,6 +10,7 @@ import '../repositories.dart';
 import '../gamification_provider.dart';
 import '../settings_provider.dart';
 import '../widgets/app_header_actions.dart';
+import '../widgets/responsive_page.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n_ext.dart';
 
@@ -375,17 +376,23 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     }
     return Stack(
       children: [
-        ListView.builder(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(bottom: 80),
-          itemCount: filteredItems.length,
-          itemBuilder: (context, index) => Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-            child: FeedCard(
-              key: ValueKey(filteredItems[index].id),
-              item: filteredItems[index],
-              onProgress: _applyProgress,
+        Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: AppBreakpoints.feedCardMaxWidth),
+            child: ListView.builder(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 80),
+              itemCount: filteredItems.length,
+              itemBuilder: (context, index) => Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                child: FeedCard(
+                  key: ValueKey(filteredItems[index].id),
+                  item: filteredItems[index],
+                  onProgress: _applyProgress,
+                ),
+              ),
             ),
           ),
         ),

@@ -8,6 +8,7 @@ import '../gamification_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/coach/coach_bubble.dart';
 import '../widgets/coach/coach_character.dart';
+import '../widgets/responsive_page.dart';
 
 class ProgressScreen extends ConsumerStatefulWidget {
   const ProgressScreen({super.key});
@@ -41,14 +42,15 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
           },
         ),
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await ref.read(gamificationProvider.notifier).refresh();
-          ref.invalidate(activityAnalyticsProvider(_range));
-        },
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-          children: [
+      body: ResponsivePage(
+        child: RefreshIndicator(
+          onRefresh: () async {
+            await ref.read(gamificationProvider.notifier).refresh();
+            ref.invalidate(activityAnalyticsProvider(_range));
+          },
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            children: [
             if (summary != null) ...[
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -125,6 +127,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

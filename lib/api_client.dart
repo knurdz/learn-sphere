@@ -103,7 +103,7 @@ class BridgeApi {
       'Cannot reach the LearnSphere API at $base. Start it on your computer: cd api && pnpm dev',
     );
     if (!kIsWeb && (base.contains('127.0.0.1') || base.contains('localhost'))) {
-      if (!kIsWeb && Platform.isAndroid) {
+      if (Platform.isAndroid) {
         buffer.write(
           '. On a physical Android phone over USB, also run: adb reverse tcp:3000 tcp:3000',
         );
@@ -112,6 +112,8 @@ class BridgeApi {
           '. On a physical device, set API_BASE_URL to your computer\'s LAN IP (not 127.0.0.1) in .env.local',
         );
       }
+    } else if (kIsWeb && (base.contains('127.0.0.1') || base.contains('localhost'))) {
+      buffer.write('. Start the API with: cd api && pnpm dev');
     }
     buffer.write('.');
     return buffer.toString();

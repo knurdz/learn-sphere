@@ -9,7 +9,7 @@ const supabaseUrlPrefKey = 'learnsphere_supabase_url';
 Future<void> initializeSupabaseAuth(AppConfig config, SharedPreferences prefs) async {
   await Supabase.initialize(
     url: config.supabaseUrl,
-    anonKey: config.supabaseAnonKey,
+    publishableKey: config.supabaseAnonKey,
     authOptions: const FlutterAuthClientOptions(
       authFlowType: AuthFlowType.pkce,
     ),
