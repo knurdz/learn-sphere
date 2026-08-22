@@ -180,7 +180,43 @@ describe("streakAtRisk", () => {
 });
 
 describe("buildAnalytics", () => {
-  it("aggregates by type and week buckets", () => {
+  it("aggregates the current week as seven weekday bars for the day range", () => {
+    const now = new Date("2026-08-07T12:00:00.000Z"); // Friday
+    const today = localDateKey(now, "UTC");
+    const analytics = buildAnalytics(
+      [
+        {
+          event_type: "feed_attempt",
+          xp_awarded: ACTIVITY_XP.feed_attempt,
+          local_date: today,
+          occurred_at: now.toISOString(),
+        },
+        {
+          event_type: "feed_completed",
+          xp_awarded: ACTIVITY_XP.feed_completed,
+          local_date: addLocalDays(today, -1),
+          occurred_at: addLocalDays(today, -1) + "T10:00:00.000Z",
+        },
+      ],
+      "day",
+      "UTC",
+      now,
+    );
+    expect(analytics.buckets).toHaveLength(7);
+    expect(analytics.buckets.map((bucket) => bucket.label)).toEqual([
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun",
+    ]);
+    expect(analytics.buckets.find((bucket) => bucket.label === "Fri")?.eventCount).toBe(1);
+    expect(analytics.buckets.find((bucket) => bucket.label === "Thu")?.eventCount).toBe(1);
+  });
+
+  it("aggregates last four weeks for the week range", () => {
     const now = new Date("2026-08-05T12:00:00.000Z");
     const today = localDateKey(now, "UTC");
     const analytics = buildAnalytics(
@@ -204,7 +240,27 @@ describe("buildAnalytics", () => {
     );
     expect(analytics.totalEvents).toBe(2);
     expect(analytics.byType.feed_attempt?.count).toBe(1);
-    expect(analytics.buckets).toHaveLength(7);
-    expect(analytics.buckets.map((bucket) => bucket.label)).toContain("Wed");
+    expect(analytics.buckets).toHaveLength(4);
+    expect(analytics.buckets[3]?.eventCount).toBe(2);
+  });
+
+  it("aggregates last twelve months for the month range", () => {
+    const now = new Date("2026-08-05T12:00:00.000Z");
+    const analytics = buildAnalytics(
+      [
+        {
+          event_type: "feed_attempt",
+          xp_awarded: ACTIVITY_XP.feed_attempt,
+          local_date: "2026-08-05",
+          occurred_at: now.toISOString(),
+        },
+      ],
+      "month",
+      "UTC",
+      now,
+    );
+    expect(analytics.buckets).toHaveLength(12);
+    expect(analytics.buckets[11]?.label).toBe("Aug");
+    expect(analytics.buckets[11]?.eventCount).toBe(1);
   });
 });

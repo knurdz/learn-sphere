@@ -23,6 +23,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _avatarBusy = false;
   String? _avatarError;
+  bool _goalBusy = false;
 
   String _formatAvatarError(Object error) {
     if (error is FormatException) return error.message;
@@ -40,6 +41,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return 'Could not reach the server. Please check your internet connection and try again.';
     }
     return 'Could not update your avatar. Please try again.';
+  }
+
+  Future<void> _changeDailyGoal(int nextGoal) async {
+    if (_goalBusy) return;
+    setState(() => _goalBusy = true);
+    try {
+      await ref.read(gamificationProvider.notifier).updateDailyGoal(nextGoal);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update your daily goal.\n$error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _goalBusy = false);
+    }
   }
 
   Future<void> _pickPhoto() async {
@@ -368,6 +385,43 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     icon: const Icon(Icons.analytics_outlined, size: 18),
                     label: const Text('Open Analytics'),
                   ),
+                  if (summary != null) ...[
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Daily goal',
+                            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Fewer activities',
+                          onPressed: _goalBusy || summary.dailyGoal <= 1
+                              ? null
+                              : () => _changeDailyGoal(summary.dailyGoal - 1),
+                          icon: const Icon(Icons.remove_circle_outline),
+                        ),
+                        Text(
+                          '${summary.dailyGoal}',
+                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        IconButton(
+                          tooltip: 'More activities',
+                          onPressed: _goalBusy || summary.dailyGoal >= 50
+                              ? null
+                              : () => _changeDailyGoal(summary.dailyGoal + 1),
+                          icon: const Icon(Icons.add_circle_outline),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      'How many study activities count as a full day.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

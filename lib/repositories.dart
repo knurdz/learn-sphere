@@ -310,7 +310,10 @@ class StudyRepository {
           'quizSelectedIndex': item.progress.quizSelectedIndex,
           'quizCorrectIndex': item.progress.quizCorrectIndex,
           'trueFalseSelected': item.progress.trueFalseSelected,
+          'trueFalseCorrect': item.progress.trueFalseCorrect,
           'fillBlankSelectedAnswer': item.progress.fillBlankSelectedAnswer,
+          'fillBlankCorrectAnswer': item.progress.fillBlankCorrectAnswer,
+          'explanation': item.progress.explanation,
         },
       };
 

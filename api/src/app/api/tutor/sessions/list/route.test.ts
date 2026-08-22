@@ -114,6 +114,32 @@ describe("GET /api/tutor/sessions/list", () => {
     expect(body.sessions[0]?.preview).toContain("Tutor:");
   });
 
+  it("omits empty sessions with no messages", async () => {
+    vi.mocked(getAuthContext).mockResolvedValue({
+      configured: true,
+      user: { id: userId, email: "learner@test" },
+      supabase: createSupabase({
+        sessions: [
+          {
+            id: sessionId,
+            title: "New tutor session",
+            updated_at: "2026-08-06T10:00:00.000Z",
+            created_at: "2026-08-06T09:00:00.000Z",
+          },
+        ],
+        messages: [],
+      }) as never,
+    } as never);
+
+    const response = await GET(
+      new NextRequest(
+        `http://localhost/api/tutor/sessions/list?studySpaceId=${studySpaceId}`,
+      ),
+    );
+    const body = (await response.json()) as { sessions: unknown[] };
+    expect(body.sessions).toHaveLength(0);
+  });
+
   it("returns 400 for invalid studySpaceId", async () => {
     vi.mocked(getAuthContext).mockResolvedValue({
       configured: true,

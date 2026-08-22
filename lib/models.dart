@@ -106,7 +106,10 @@ class Progress {
     this.quizSelectedIndex,
     this.quizCorrectIndex,
     this.trueFalseSelected,
+    this.trueFalseCorrect,
     this.fillBlankSelectedAnswer,
+    this.fillBlankCorrectAnswer,
+    this.explanation,
   });
 
   final DateTime? completedAt;
@@ -114,7 +117,10 @@ class Progress {
   final int? quizSelectedIndex;
   final int? quizCorrectIndex;
   final bool? trueFalseSelected;
+  final bool? trueFalseCorrect;
   final String? fillBlankSelectedAnswer;
+  final String? fillBlankCorrectAnswer;
+  final String? explanation;
 
   bool get completed => completedAt != null;
 
@@ -124,7 +130,10 @@ class Progress {
         quizSelectedIndex: map['quizSelectedIndex'] as int?,
         quizCorrectIndex: map['quizCorrectIndex'] as int?,
         trueFalseSelected: map['trueFalseSelected'] as bool?,
+        trueFalseCorrect: map['trueFalseCorrect'] as bool?,
         fillBlankSelectedAnswer: map['fillBlankSelectedAnswer'] as String?,
+        fillBlankCorrectAnswer: map['fillBlankCorrectAnswer'] as String?,
+        explanation: map['explanation'] as String?,
       );
 }
 

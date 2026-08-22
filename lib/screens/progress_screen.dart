@@ -56,7 +56,11 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                   const CoachCharacter(size: 64),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: CoachBubble(message: summary.coachMessage, compact: true),
+                    child: CoachBubble(
+                      message: summary.coachMessage,
+                      compact: true,
+                      hideCtaForRoute: '/progress',
+                    ),
                   ),
                 ],
               ),
@@ -142,22 +146,28 @@ class _StreakHero extends StatelessWidget {
           children: [
             Text('🔥', style: theme.textTheme.displaySmall),
             const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  l10n.progressCurrentStreak(summary.currentStreak),
-                  style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-                ),
-                Text(
-                  l10n.progressLongestStreak(summary.longestStreak),
-                  style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                ),
-                Text(
-                  l10n.progressTotalXp(summary.totalXp),
-                  style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                ),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l10n.progressCurrentStreak(summary.currentStreak),
+                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  Text(
+                    l10n.progressLongestStreak(summary.longestStreak),
+                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                  Text(
+                    l10n.progressTotalXp(summary.totalXp),
+                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                  Text(
+                    'XP tracks your daily goal and streak.',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -243,39 +253,61 @@ class _ActivityChart extends StatelessWidget {
       );
     }
 
-    final maxY = buckets.map((b) => b.eventCount).fold<int>(0, (a, b) => a > b ? a : b).toDouble() + 1;
+    final maxCount = buckets.map((b) => b.eventCount).fold<int>(0, (a, b) => a > b ? a : b);
+    final maxY = (maxCount < 1 ? 1 : maxCount).toDouble();
+    final interval = maxY <= 6 ? 1.0 : (maxY / 4).ceilToDouble();
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final targetLabelWidth = analytics.range == 'day' ? 44.0 : 34.0;
-        final maxLabels = (width / targetLabelWidth).floor().clamp(2, buckets.length);
-        final showEvery = (buckets.length / maxLabels).ceil().clamp(1, buckets.length);
-        final rotate = analytics.range == 'day';
-        final reserved = rotate ? 44.0 : 34.0;
+        final barWidth = buckets.length <= 4
+            ? 28.0
+            : buckets.length <= 7
+                ? 18.0
+                : 14.0;
         return BarChart(
           BarChartData(
-            maxY: maxY,
+            maxY: maxY + (interval > 1 ? 0 : 1),
             gridData: const FlGridData(show: false),
             borderData: FlBorderData(show: false),
+            barTouchData: BarTouchData(
+              touchTooltipData: BarTouchTooltipData(
+                getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                  final index = group.x;
+                  if (index < 0 || index >= buckets.length) return null;
+                  final bucket = buckets[index];
+                  return BarTooltipItem(
+                    '${bucket.eventCount}',
+                    theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700) ??
+                        const TextStyle(fontWeight: FontWeight.w700),
+                  );
+                },
+              ),
+            ),
             titlesData: FlTitlesData(
               topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
               rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 28)),
+              leftTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: 40,
+                  interval: interval,
+                  getTitlesWidget: (value, meta) {
+                    if (value < 0 || value % 1 != 0) return const SizedBox.shrink();
+                    if (value > maxY + 1) return const SizedBox.shrink();
+                    return Text('${value.toInt()}', style: theme.textTheme.labelSmall);
+                  },
+                ),
+              ),
               bottomTitles: AxisTitles(
                 sideTitles: SideTitles(
                   showTitles: true,
-                  reservedSize: reserved,
+                  reservedSize: 28,
                   getTitlesWidget: (value, meta) {
                     final index = value.toInt();
                     if (index < 0 || index >= buckets.length) return const SizedBox.shrink();
-                    final isEdge = index == 0 || index == buckets.length - 1;
-                    if (!isEdge && index % showEvery != 0) return const SizedBox.shrink();
-                    final label = _bucketLabelForRange(buckets[index].startDate, analytics.range);
                     return SideTitleWidget(
                       meta: meta,
-                      angle: rotate ? -0.55 : 0,
-                      child: Text(label, style: theme.textTheme.labelSmall),
+                      child: Text(buckets[index].label, style: theme.textTheme.labelSmall),
                     );
                   },
                 ),
@@ -289,7 +321,7 @@ class _ActivityChart extends StatelessWidget {
                     BarChartRodData(
                       toY: buckets[i].eventCount.toDouble(),
                       color: theme.colorScheme.primary,
-                      width: analytics.range == 'month' ? 6 : 14,
+                      width: barWidth,
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                     ),
                   ],
@@ -300,25 +332,4 @@ class _ActivityChart extends StatelessWidget {
       },
     );
   }
-}
-
-String _bucketLabelForRange(String startDate, String range) {
-  if (range == 'day') {
-    final hourToken = startDate.length >= 13 ? startDate.substring(11, 13) : '00';
-    return '$hourToken:00';
-  }
-
-  final parsed = DateTime.tryParse(startDate);
-  if (parsed == null) {
-    return startDate.length > 5 ? startDate.substring(startDate.length - 5) : startDate;
-  }
-
-  if (range == 'week') {
-    const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-    return labels[parsed.weekday - 1];
-  }
-
-  final month = parsed.month.toString().padLeft(2, '0');
-  final day = parsed.day.toString().padLeft(2, '0');
-  return '$month/$day';
 }

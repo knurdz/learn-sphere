@@ -12,6 +12,21 @@ _CHANNEL_BLOCK = re.compile(
 )
 _CHANNEL_OPEN = re.compile(r"<\|channel>\w+\s*")
 _CHANNEL_CLOSE = re.compile(r"<channel\|>")
+_JSON_FIELD = re.compile(
+    r"""\{\s*["']?(?P<name>speech|thought)["']?\s*:\s*(?:["'](?P<quoted>.*?)["']|(?P<bare>[^}]*))\s*\}""",
+    re.DOTALL | re.IGNORECASE,
+)
+_LEFTOVER_SPEECH_OPEN = re.compile(
+    r"""^\s*\{?\s*["']?speech["']?\s*:?\s*["']?""",
+    re.IGNORECASE,
+)
+_LEFTOVER_TRAILING_JSON = re.compile(r"""["']?\s*\}\s*$""")
+
+
+def _replace_json_field(match: re.Match[str]) -> str:
+    if match.group("name").lower() == "thought":
+        return ""
+    return (match.group("quoted") or match.group("bare") or "").strip()
 
 
 def scrub_gemma_channels(text: str) -> str:
@@ -22,4 +37,7 @@ def scrub_gemma_channels(text: str) -> str:
     )
     text = _CHANNEL_OPEN.sub("", text)
     text = _CHANNEL_CLOSE.sub("", text)
-    return text.lstrip()
+    text = _JSON_FIELD.sub(_replace_json_field, text)
+    text = _LEFTOVER_SPEECH_OPEN.sub("", text)
+    text = _LEFTOVER_TRAILING_JSON.sub("", text)
+    return text.strip().lstrip('{}"')

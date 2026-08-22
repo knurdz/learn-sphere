@@ -225,7 +225,7 @@ export async function GET(request: NextRequest) {
               artifact.payload &&
               typeof artifact.payload === "object" &&
               !Array.isArray(artifact.payload)
-                ? (artifact.payload as { correct_index?: unknown })
+                ? (artifact.payload as { correct_index?: unknown; explanation?: unknown })
                 : {};
             return {
               ...progress,
@@ -238,21 +238,46 @@ export async function GET(request: NextRequest) {
                 Number.isInteger(quizPayload.correct_index)
                   ? quizPayload.correct_index
                   : null,
+              explanation:
+                typeof quizPayload.explanation === "string"
+                  ? quizPayload.explanation.trim() || null
+                  : null,
             };
           }
 
           if (kind === "true_false") {
+            const tfPayload =
+              artifact.payload &&
+              typeof artifact.payload === "object" &&
+              !Array.isArray(artifact.payload)
+                ? (artifact.payload as { is_true?: unknown; explanation?: unknown })
+                : {};
             return {
               ...progress,
               trueFalseSelected: typeof attempt?.answer === "boolean" ? attempt.answer : null,
+              trueFalseCorrect: typeof tfPayload.is_true === "boolean" ? tfPayload.is_true : null,
+              explanation:
+                typeof tfPayload.explanation === "string" ? tfPayload.explanation.trim() || null : null,
             };
           }
 
           if (kind === "fill_blank") {
+            const fillPayload =
+              artifact.payload &&
+              typeof artifact.payload === "object" &&
+              !Array.isArray(artifact.payload)
+                ? (artifact.payload as { answer?: unknown; explanation?: unknown })
+                : {};
             return {
               ...progress,
               fillBlankSelectedAnswer:
                 typeof attempt?.answer === "string" ? attempt.answer : null,
+              fillBlankCorrectAnswer:
+                typeof fillPayload.answer === "string" ? fillPayload.answer : null,
+              explanation:
+                typeof fillPayload.explanation === "string"
+                  ? fillPayload.explanation.trim() || null
+                  : null,
             };
           }
 

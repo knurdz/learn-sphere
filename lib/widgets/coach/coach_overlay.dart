@@ -144,8 +144,13 @@ class _CoachOverlayState extends ConsumerState<CoachOverlay> {
                       : null,
                   onPrimaryAction: tourActive ? () => _advanceTour(tourStep) : null,
                   primaryActionBusy: _tourBusy,
-                  secondaryActionLabel: tourActive ? l10n.coachSkipTour : null,
-                  onSecondaryAction: tourActive ? _skipTour : null,
+                  secondaryActionLabel: tourActive ? l10n.coachSkipTour : 'Ask tutor',
+                  onSecondaryAction: tourActive
+                      ? _skipTour
+                      : () {
+                          _closeMessagePanel(tourActive: false);
+                          context.go('/learn?tab=live&drawer=chat');
+                        },
                   secondaryActionBusy: _tourBusy,
                 ),
               );

@@ -21,6 +21,23 @@ class ScrubGemmaChannelsTest(unittest.TestCase):
         plain = "What would you like to explore first?"
         self.assertEqual(scrub_gemma_channels(plain), plain)
 
+    def test_strips_json_speech_wrappers(self) -> None:
+        self.assertEqual(
+            scrub_gemma_channels('{speech:"Hello there."}'),
+            "Hello there.",
+        )
+        self.assertEqual(
+            scrub_gemma_channels('{ "speech": "Let us begin." }'),
+            "Let us begin.",
+        )
+
+    def test_drops_json_thought_and_speech_label(self) -> None:
+        self.assertEqual(
+            scrub_gemma_channels('{thought:"planning"} {speech:"Hi."}'),
+            "Hi.",
+        )
+        self.assertEqual(scrub_gemma_channels('{speech:"}Hello'), "Hello")
+
 
 if __name__ == "__main__":
     unittest.main()
