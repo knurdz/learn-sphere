@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../auth_controller.dart';
-import '../widgets/coach/streak_chip.dart';
-import '../widgets/coach_tour_scope.dart';
+import 'coach/streak_chip.dart';
+import 'coach_tour_scope.dart';
 import 'user_avatar.dart';
 
 /// Profile avatar (with sign-out menu) and settings shortcut for main tabs.
@@ -13,14 +13,13 @@ class AppHeaderActions extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tourKeys = CoachTourScope.maybeOf(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         const StreakChip(),
         const SizedBox(width: 4),
         IconButton(
-          key: tourKeys?.settingsKey,
+          key: CoachTourScope.targetKey(context, 'settings'),
           onPressed: () => context.push('/settings'),
           icon: const Icon(Icons.settings_outlined),
           tooltip: 'Settings',

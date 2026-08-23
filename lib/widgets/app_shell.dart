@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../gamification_provider.dart';
 import '../l10n/app_localizations.dart';
-import '../screens/library_screen.dart';
 import 'coach/coach_overlay.dart';
 import 'coach_tour_scope.dart';
 import 'responsive_page.dart';
@@ -13,14 +13,14 @@ class AppShell extends ConsumerStatefulWidget {
 
   final Widget child;
 
-  static final libraryScreenKey = GlobalKey<LibraryScreenState>();
-
   @override
   ConsumerState<AppShell> createState() => _AppShellState();
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
   final _tourKeys = CoachTourKeys();
+
+  static const _navTourSteps = ['feed', 'learn_tab', 'library'];
 
   static List<({String path, String label, IconData icon, IconData selectedIcon})> destinations(
     AppLocalizations l10n,
@@ -47,19 +47,26 @@ class _AppShellState extends ConsumerState<AppShell> {
     );
   }
 
+  Key? _navTourKey(int index, String? activeStep) {
+    if (index < 0 || index >= _navTourSteps.length) return null;
+    if (activeStep != _navTourSteps[index]) return null;
+    return _tourKeys.keyForStep(activeStep!);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final tabs = destinations(l10n);
     final location = GoRouterState.of(context).matchedLocation;
     final selected = _selectedIndex(location, l10n);
-    final navKeys = [_tourKeys.navFeedKey, _tourKeys.navLearnKey, _tourKeys.navLibraryKey];
+    final pending = ref.watch(gamificationProvider).valueOrNull?.pendingTourSteps ?? const [];
+    final activeStep = pending.isNotEmpty ? pending.first : null;
     final sidebar = useSidebarNavigation(context);
 
     final fab = location.startsWith('/library')
         ? FloatingActionButton.extended(
-            key: _tourKeys.libraryFabKey,
-            onPressed: () => AppShell.libraryScreenKey.currentState?.uploadMaterial(),
+            key: activeStep == 'library' ? _tourKeys.libraryFabKey : null,
+            onPressed: () => context.go('/library?prompt=upload'),
             icon: const Icon(Icons.upload_file_outlined),
             label: Text(l10n.addMaterial),
           )
@@ -78,7 +85,10 @@ class _AppShellState extends ConsumerState<AppShell> {
                   destinations: [
                     for (var i = 0; i < tabs.length; i++)
                       NavigationRailDestination(
-                        icon: KeyedSubtree(key: navKeys[i], child: Icon(tabs[i].icon)),
+                        icon: KeyedSubtree(
+                          key: _navTourKey(i, activeStep),
+                          child: Icon(tabs[i].icon),
+                        ),
                         selectedIcon: Icon(tabs[i].selectedIcon),
                         label: Text(tabs[i].label),
                       ),
@@ -97,7 +107,10 @@ class _AppShellState extends ConsumerState<AppShell> {
               destinations: [
                 for (var i = 0; i < tabs.length; i++)
                   NavigationDestination(
-                    icon: KeyedSubtree(key: navKeys[i], child: Icon(tabs[i].icon)),
+                    icon: KeyedSubtree(
+                      key: _navTourKey(i, activeStep),
+                      child: Icon(tabs[i].icon),
+                    ),
                     selectedIcon: Icon(tabs[i].selectedIcon),
                     label: tabs[i].label,
                   ),
@@ -108,6 +121,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     return CoachTourScope(
       keys: _tourKeys,
+      activeStep: activeStep,
       child: CoachOverlay(child: scaffold),
     );
   }

@@ -13,10 +13,10 @@ class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
 
   @override
-  ConsumerState<LibraryScreen> createState() => LibraryScreenState();
+  ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
 }
 
-class LibraryScreenState extends ConsumerState<LibraryScreen> {
+class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   List<StudySpace> _spaces = [];
   List<MaterialItem> _materials = [];
   String? _selectedSpaceId;
@@ -39,12 +39,6 @@ class LibraryScreenState extends ConsumerState<LibraryScreen> {
     super.didChangeDependencies();
     _handleLibraryPrompt();
   }
-
-  /// Opens the create-space dialog (used by FAB/header and coach CTAs).
-  Future<void> createSpace() => _createSpace();
-
-  /// Called from the shell FAB to pick and upload a file.
-  Future<void> uploadMaterial() => _upload();
 
   void _handleLibraryPrompt() {
     if (!mounted) return;

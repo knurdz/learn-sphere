@@ -51,7 +51,6 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
-    final tourKeys = CoachTourScope.maybeOf(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -86,12 +85,12 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
             controller: _tabController,
             tabs: [
               Tab(
-                key: tourKeys?.learnLiveKey,
+                key: CoachTourScope.targetKey(context, 'learn_live'),
                 text: l10n.liveTutor,
                 icon: const Icon(Icons.videocam_outlined),
               ),
               Tab(
-                key: tourKeys?.learnToolsKey,
+                key: CoachTourScope.targetKey(context, 'learn_tools'),
                 text: l10n.studyToolsTab,
                 icon: const Icon(Icons.extension_outlined),
               ),
