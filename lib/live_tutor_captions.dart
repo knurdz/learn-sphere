@@ -14,6 +14,88 @@ final _speechLeftover = RegExp(
 );
 final _whitespace = RegExp(r'\s');
 final _punctuation = RegExp(r'[.!?,;:]');
+final _wordChar = RegExp(r'[A-Za-z0-9]');
+final _spaceAfterPunct = RegExp(r'([,.!?;:])(\S)');
+final _spaceBeforeCapital = RegExp(r'([a-z0-9])([A-Z])');
+final _longLetterRun = RegExp(r'[A-Za-z]{10,}');
+
+/// Longest-first lexicon for recovering spaces in glued caption runs.
+/// Keep entries that are unlikely to be accidental mid-word substrings when
+/// matched greedily from the left of a letter-only run.
+const _captionLexicon = <String>{
+  'repositories',
+  'commands',
+  'workflow',
+  'through',
+  'specific',
+  'managing',
+  'cloning',
+  'forking',
+  'history',
+  'between',
+  'before',
+  'sounds',
+  'should',
+  'would',
+  'could',
+  'which',
+  'where',
+  'these',
+  'those',
+  'about',
+  'after',
+  'under',
+  'again',
+  'files',
+  'start',
+  'wish',
+  'walk',
+  'with',
+  'from',
+  'into',
+  'over',
+  'like',
+  'also',
+  'this',
+  'that',
+  'what',
+  'when',
+  'then',
+  'just',
+  'more',
+  'most',
+  'some',
+  'such',
+  'than',
+  'very',
+  'best',
+  'ones',
+  'one',
+  'you',
+  'can',
+  'and',
+  'the',
+  'for',
+  'but',
+  'how',
+  'are',
+  'was',
+  'will',
+  'your',
+  'our',
+  'we',
+  'go',
+  'to',
+  'of',
+  'or',
+};
+
+List<String>? _lexiconByLengthDesc;
+
+List<String> _captionWordsByLength() {
+  return _lexiconByLengthDesc ??=
+      (_captionLexicon.toList()..sort((a, b) => b.length.compareTo(a.length)));
+}
 
 /// Strip Gemma / speech-channel markup. Does **not** trim edges so token
 /// spaces survive until the final display string is built.
@@ -26,6 +108,48 @@ String scrubSpeechMarkup(String text) {
   return next;
 }
 
+/// Greedy longest-match word break for a glued letter run.
+String _breakGluedLetterRun(String run) {
+  final lower = run.toLowerCase();
+  final n = lower.length;
+  final words = _captionWordsByLength();
+  final breaks = List<String?>.filled(n + 1, null);
+  breaks[0] = '';
+
+  for (var i = 0; i < n; i++) {
+    if (breaks[i] == null) continue;
+    for (final word in words) {
+      final end = i + word.length;
+      if (end > n) continue;
+      if (lower.substring(i, end) != word) continue;
+      final piece = run.substring(i, end);
+      final next = breaks[i]!.isEmpty ? piece : '${breaks[i]} $piece';
+      final existing = breaks[end];
+      if (existing == null ||
+          next.split(' ').length > existing.split(' ').length ||
+          (next.split(' ').length == existing.split(' ').length && next.length < existing.length)) {
+        breaks[end] = next;
+      }
+    }
+    // Single-letter advance so we never get stuck on unknown stems.
+    if (breaks[i + 1] == null) {
+      final piece = run.substring(i, i + 1);
+      breaks[i + 1] = breaks[i]!.isEmpty ? piece : '${breaks[i]}$piece';
+    }
+  }
+  return breaks[n] ?? run;
+}
+
+/// Insert spaces that streaming / tokenization often drops between words.
+String repairCaptionSpacing(String text) {
+  if (text.isEmpty) return text;
+  var next = text;
+  next = next.replaceAllMapped(_spaceAfterPunct, (m) => '${m[1]} ${m[2]}');
+  next = next.replaceAllMapped(_spaceBeforeCapital, (m) => '${m[1]} ${m[2]}');
+  next = next.replaceAllMapped(_longLetterRun, (m) => _breakGluedLetterRun(m[0]!));
+  return next.replaceAll(RegExp(r' {2,}'), ' ');
+}
+
 /// Merge an incoming stream chunk into the current utterance.
 ///
 /// Supports cumulative snapshots (keep the longer prefix) and token deltas
@@ -34,9 +158,32 @@ String mergeCaptionText(String current, String incoming) {
   if (incoming.isEmpty) return current;
   if (current.isEmpty) return incoming;
   if (incoming == current) return current;
-  if (incoming.startsWith(current)) return incoming;
+  if (incoming.startsWith(current)) {
+    return _joinCumulativeGrowth(current, incoming);
+  }
   if (current.startsWith(incoming)) return current;
   return _appendCaptionToken(current, incoming);
+}
+
+/// When a cumulative snapshot grows without a leading space on the new suffix
+/// (`We` → `Wecan`), insert a boundary space for multi-character word tokens.
+/// Single-character growth (`Thi` → `This`) stays unspaced so BPE mid-word
+/// pieces are not broken apart.
+String _joinCumulativeGrowth(String current, String incoming) {
+  if (incoming.length <= current.length) return incoming;
+  final suffix = incoming.substring(current.length);
+  if (suffix.isEmpty) return incoming;
+  if (_whitespace.hasMatch(suffix[0]) || _punctuation.hasMatch(suffix[0])) {
+    return incoming;
+  }
+  if (current.isEmpty) return incoming;
+  final leftEnd = current[current.length - 1];
+  if (!_wordChar.hasMatch(leftEnd) || !_wordChar.hasMatch(suffix[0])) {
+    return incoming;
+  }
+  // Character-level growth inside one word.
+  if (suffix.length == 1) return incoming;
+  return '$current $suffix';
 }
 
 String _appendCaptionToken(String left, String right) {
@@ -113,7 +260,8 @@ String buildLiveTutorCaption(
   int sentenceCount = 2,
 }) {
   if (body.trim().isEmpty) return '';
-  final window = lastCaptionSentences(dedupeDoubledParagraph(body), sentenceCount).trim();
+  final repaired = repairCaptionSpacing(dedupeDoubledParagraph(body));
+  final window = lastCaptionSentences(repaired, sentenceCount).trim();
   if (window.isEmpty) return '';
   return fromLearner ? 'You: $window' : window;
 }

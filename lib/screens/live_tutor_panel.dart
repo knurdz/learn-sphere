@@ -142,6 +142,7 @@ class LiveTutorPanelState extends ConsumerState<LiveTutorPanel> {
         youtubeUrl: _youtube.text,
       );
       if (!mounted) return;
+      FocusManager.instance.primaryFocus?.unfocus();
       await Navigator.of(context, rootNavigator: true).push(
         MaterialPageRoute<void>(
           fullscreenDialog: true,

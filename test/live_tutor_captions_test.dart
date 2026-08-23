@@ -33,8 +33,33 @@ void main() {
     test('does not insert a space before punctuation', () {
       expect(mergeCaptionText('workflow', '?'), 'workflow?');
     });
+
+    test('inserts a space when cumulative growth skips the space', () {
+      expect(mergeCaptionText('We', 'Wecan'), 'We can');
+      expect(mergeCaptionText('We can', 'We can also'), 'We can also');
+    });
+
+    test('does not break mid-word character growth', () {
+      expect(mergeCaptionText('Thi', 'This'), 'This');
+    });
   });
 
+  group('repairCaptionSpacing', () {
+    test('repairs the screenshot-style glued tutor caption', () {
+      const glued =
+          'WecanalsogoovertheGitworkflow,likeforkingandcloningrepositories,orIcanwalkyouthroughspecificGitcommandsformanagingfilesandhistory. Whichonesoundsbesttoyou?';
+      final repaired = repairCaptionSpacing(glued);
+      expect(repaired, contains('We can also go over the Git workflow'));
+      expect(repaired, contains(', like forking and cloning repositories'));
+      expect(repaired, contains('or I can walk you through'));
+      expect(repaired, isNot(contains('Wecanalsogoover')));
+      expect(repaired.toLowerCase(), contains('sounds best'));
+    });
+
+    test('does not split ordinary words like This', () {
+      expect(repairCaptionSpacing('This course focuses on the workflow?'), 'This course focuses on the workflow?');
+    });
+  });
   group('dedupeDoubledParagraph', () {
     test('collapses a paragraph repeated twice without a space', () {
       const para =

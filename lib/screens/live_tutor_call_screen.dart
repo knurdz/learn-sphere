@@ -48,6 +48,11 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
   @override
   void initState() {
     super.initState();
+    // Drop focus from Learn-tab text fields underneath this fullscreen route so
+    // Android does not paint a blinking caret over the avatar video.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    });
     _connect();
   }
 
@@ -329,93 +334,100 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
   Widget build(BuildContext context) {
     final track = _avatarTrack;
     final maxSubtitleHeight = MediaQuery.sizeOf(context).height * 0.32;
-    return Scaffold(
-      backgroundColor: const Color(0xFF0C1222),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (track != null)
-            VideoTrackRenderer(track, fit: VideoViewFit.cover)
-          else
-            _Placeholder(status: _error ?? _status, failed: _error != null),
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    IconButton.filledTonal(
-                      onPressed: _leaving ? null : _leave,
-                      style: IconButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        backgroundColor: Colors.white24,
+    return Focus(
+      autofocus: true,
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0C1222),
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (track != null)
+              ExcludeFocus(
+                child: VideoTrackRenderer(track, fit: VideoViewFit.cover),
+              )
+            else
+              _Placeholder(status: _error ?? _status, failed: _error != null),
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      IconButton.filledTonal(
+                        onPressed: _leaving ? null : _leave,
+                        style: IconButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          backgroundColor: Colors.white24,
+                        ),
+                        icon: const Icon(Icons.close),
                       ),
-                      icon: const Icon(Icons.close),
+                      const SizedBox(width: 12),
+                      const Text(
+                        'Live tutor',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 17),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_caption.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 20),
+                        constraints: BoxConstraints(maxHeight: maxSubtitleHeight),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: SingleChildScrollView(
+                          controller: _captionScrollController,
+                          child: SelectionContainer.disabled(
+                            child: Text(
+                              _caption,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white, height: 1.35, fontSize: 15),
+                            ),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 18),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _OverlayCallButton(
+                          icon: _micEnabled ? Icons.mic : Icons.mic_off,
+                          color: _micEnabled ? Colors.white.withValues(alpha: 0.22) : Colors.white,
+                          iconColor: _micEnabled ? Colors.white : const Color(0xFF0C1222),
+                          onPressed: _toggleMic,
+                        ),
+                        const SizedBox(width: 28),
+                        _OverlayCallButton(
+                          icon: Icons.call_end,
+                          color: const Color(0xFFDC2626),
+                          iconColor: Colors.white,
+                          onPressed: _leaving ? () {} : _leave,
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    const Text(
-                      'Live tutor',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 17),
-                    ),
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),
             ),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_caption.isNotEmpty)
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 20),
-                      constraints: BoxConstraints(maxHeight: maxSubtitleHeight),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: SingleChildScrollView(
-                        controller: _captionScrollController,
-                        child: Text(
-                          _caption,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white, height: 1.35, fontSize: 15),
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 18),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _OverlayCallButton(
-                        icon: _micEnabled ? Icons.mic : Icons.mic_off,
-                        color: _micEnabled ? Colors.white.withValues(alpha: 0.22) : Colors.white,
-                        iconColor: _micEnabled ? Colors.white : const Color(0xFF0C1222),
-                        onPressed: _toggleMic,
-                      ),
-                      const SizedBox(width: 28),
-                      _OverlayCallButton(
-                        icon: Icons.call_end,
-                        color: const Color(0xFFDC2626),
-                        iconColor: Colors.white,
-                        onPressed: _leaving ? () {} : _leave,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
