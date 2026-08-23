@@ -162,7 +162,8 @@ export async function resolveAndroidDownloadUrl(): Promise<AndroidDownloadInfo> 
     process.env.ANDROID_DOWNLOAD_URL?.trim() ||
     process.env.NEXT_PUBLIC_ANDROID_DOWNLOAD_URL?.trim();
   if (override) {
-    return { url: override, versionLabel: null, source: "override" };
+    const versionFromUrl = override.match(/learn-sphere-v?(\d+\.\d+\.\d+)/i)?.[1] ?? null;
+    return { url: override, versionLabel: versionFromUrl, source: "override" };
   }
 
   const repo = process.env.ANDROID_GITHUB_REPO?.trim() || DEFAULT_GITHUB_REPO;
@@ -187,6 +188,17 @@ export async function resolveAndroidDownloadUrl(): Promise<AndroidDownloadInfo> 
   const picked = pickLatestPublishedApkUrl(repo, releases);
   if (picked) {
     return { url: picked.url, versionLabel: picked.versionLabel, source: "github-apk" };
+  }
+
+  // When the Releases API is rate-limited or strips assets, the Atom feed still
+  // lists tags. Our CI always uploads `learn-sphere-<tag>.apk`.
+  const atomTag = atomTags[0];
+  if (atomTag) {
+    return {
+      url: githubReleaseAssetDownloadUrl(repo, atomTag, `learn-sphere-${atomTag}.apk`),
+      versionLabel: versionLabelFromReleaseTag(atomTag),
+      source: "github-apk",
+    };
   }
 
   return { url: fallback, versionLabel: null, source: "github-fallback" };
