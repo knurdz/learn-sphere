@@ -1,5 +1,6 @@
 /// Helpers for live-tutor subtitle text: scrub markup, merge stream deltas,
 /// dedupe repeated paragraphs, and window the last few sentences.
+library;
 
 final _channelOpen = RegExp(r'<\|channel>\w+\s*');
 final _channelClose = RegExp(r'<channel\|>');
