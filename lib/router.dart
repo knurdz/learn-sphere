@@ -129,7 +129,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(path: '/feed', builder: (context, state) => const FeedScreen()),
           GoRoute(path: '/learn', builder: (context, state) => const LearnScreen()),
-          GoRoute(path: '/library', builder: (context, state) => LibraryScreen(key: AppShell.libraryScreenKey)),
+          GoRoute(path: '/library', builder: (context, state) => const LibraryScreen()),
           GoRoute(
             path: '/tutor',
             redirect: (context, state) => _legacyLearnRedirect('/tutor', drawer: 'chat'),
