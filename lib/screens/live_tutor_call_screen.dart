@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../live_tutor_captions.dart';
 import '../models.dart';
 
 /// Full screen call with the Beyond Presence avatar.
@@ -110,8 +111,8 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
   }
 
   void _upsertSegment({required bool fromLearner, required String segmentId, required String text}) {
-    final trimmed = _scrubSpeechMarkup(text).trim();
-    if (trimmed.isEmpty) return;
+    final cleaned = scrubSpeechMarkup(text);
+    if (cleaned.trim().isEmpty) return;
 
     if (_captionFromLearner != fromLearner) {
       _resetCaptionBuffer(fromLearner: fromLearner);
@@ -119,38 +120,22 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
 
     if (!_segmentTexts.containsKey(segmentId)) {
       _segmentOrder.add(segmentId);
+      _segmentTexts[segmentId] = cleaned;
+    } else {
+      _segmentTexts[segmentId] = mergeCaptionText(_segmentTexts[segmentId]!, cleaned);
     }
-    _segmentTexts[segmentId] = trimmed;
   }
 
   String _buildCaptionText() {
     if (_segmentOrder.isEmpty) return '';
-    final body = _segmentOrder.map((id) => _segmentTexts[id] ?? '').where((t) => t.isNotEmpty).join(' ');
-    if (body.isEmpty) return '';
-    final window = _lastSentences(body, 2);
-    return _captionFromLearner == true ? 'You: $window' : window;
-  }
-
-  String _lastSentences(String text, int count) {
-    final parts = text
-        .split(RegExp(r'(?<=[.!?])\s+'))
-        .map((part) => part.trim())
-        .where((part) => part.isNotEmpty)
-        .toList();
-    if (parts.length <= count) return text.trim();
-    return parts.sublist(parts.length - count).join(' ');
-  }
-
-  String _scrubSpeechMarkup(String text) {
-    var next = text;
-    next = next.replaceAll(RegExp(r'<\|channel>\w+\s*'), '');
-    next = next.replaceAll(RegExp(r'<channel\|>'), '');
-    next = next.replaceAllMapped(
-      RegExp(r'''\{\s*["']?speech["']?\s*:\s*["']([^"']*)["']\s*\}''', caseSensitive: false),
-      (match) => match.group(1) ?? '',
-    );
-    next = next.replaceAll(RegExp(r'''^\s*\{?\s*["']?speech["']?\s*:?\s*["']?''', caseSensitive: false), '');
-    return next.trim();
+    var body = '';
+    for (final id in _segmentOrder) {
+      final part = _segmentTexts[id];
+      if (part == null || part.isEmpty) continue;
+      body = mergeCaptionText(body, part);
+    }
+    if (body.trim().isEmpty) return '';
+    return buildLiveTutorCaption(body, fromLearner: _captionFromLearner == true);
   }
 
   void _applyCaptionUpdate({required bool fromStream}) {
@@ -171,8 +156,8 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
   }
 
   void _onStreamTranscription(ReceivedMessage message) {
-    final text = message.content.text.trim();
-    if (text.isEmpty) return;
+    final text = message.content.text;
+    if (text.trim().isEmpty) return;
     final fromLearner = message.content is UserTranscript;
     _upsertSegment(fromLearner: fromLearner, segmentId: message.id, text: text);
     _applyCaptionUpdate(fromStream: true);

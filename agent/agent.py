@@ -53,8 +53,9 @@ FALLBACK_GREETING = "Hello! I'm your LearnSphere tutor. What would you like to w
 
 
 async def _scrub_text_stream(text: AsyncIterable[str]) -> AsyncGenerator[str, None]:
+    # Preserve leading/trailing spaces on each delta so LiveKit captions keep word gaps.
     async for chunk in text:
-        yield scrub_gemma_channels(chunk)
+        yield scrub_gemma_channels(chunk, strip_edges=False)
 
 
 class TutorAgent(Agent):
@@ -69,7 +70,7 @@ class TutorAgent(Agent):
         async def scrubbed() -> AsyncGenerator[str, None]:
             async for delta in text:
                 if isinstance(delta, str):
-                    yield scrub_gemma_channels(delta)
+                    yield scrub_gemma_channels(delta, strip_edges=False)
                 else:
                     yield delta
 
