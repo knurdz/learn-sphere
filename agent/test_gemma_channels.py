@@ -38,6 +38,19 @@ class ScrubGemmaChannelsTest(unittest.TestCase):
         )
         self.assertEqual(scrub_gemma_channels('{speech:"}Hello'), "Hello")
 
+    def test_stream_chunks_keep_leading_spaces(self) -> None:
+        self.assertEqual(
+            scrub_gemma_channels(" Hello", strip_edges=False),
+            " Hello",
+        )
+        self.assertEqual(
+            scrub_gemma_channels(" course", strip_edges=False),
+            " course",
+        )
+
+    def test_complete_utterance_still_strips_edges_by_default(self) -> None:
+        self.assertEqual(scrub_gemma_channels("  Hello there.  "), "Hello there.")
+
 
 if __name__ == "__main__":
     unittest.main()
