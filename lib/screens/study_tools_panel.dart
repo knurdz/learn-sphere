@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 import '../models.dart';
 import '../api_client.dart';
@@ -323,50 +324,94 @@ class _StudyToolsPanelState extends ConsumerState<StudyToolsPanel> {
   }
 
   Widget _artifactCard(StudyArtifact artifact) {
+    final isQuiz = artifact.kind == 'video_quiz';
+    final openIcon = isQuiz
+        ? Icons.play_arrow_rounded
+        : artifact.kind == 'video_engage'
+            ? Icons.visibility_outlined
+            : Icons.menu_book_outlined;
+    final openTooltip = isQuiz
+        ? 'Take quiz'
+        : artifact.kind == 'video_engage'
+            ? 'View engagement plan'
+            : 'View lesson plan';
+
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(14),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => _openArtifact(artifact),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    isQuiz
+                        ? Icons.quiz_outlined
+                        : artifact.kind == 'video_engage'
+                            ? Icons.play_circle_outline
+                            : Icons.movie_creation_outlined,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
-                child: Icon(
-                  artifact.kind == 'video_quiz' ? Icons.quiz_outlined : Icons.movie_creation_outlined,
-                  color: Theme.of(context).colorScheme.primary,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(artifact.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 4),
+                      Text(
+                        artifact.kind.replaceAll('_', ' '),
+                        style: const TextStyle(color: Colors.blueGrey, fontSize: 12),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(artifact.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 4),
-                    Text(
-                      artifact.kind.replaceAll('_', ' '),
-                      style: const TextStyle(color: Colors.blueGrey, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              if (artifact.kind == 'video_quiz')
                 IconButton(
-                  onPressed: () => _takeQuiz(artifact),
-                  icon: const Icon(Icons.play_arrow_rounded),
-                  tooltip: 'Take quiz',
+                  onPressed: () => _openArtifact(artifact),
+                  icon: Icon(openIcon),
+                  tooltip: openTooltip,
                 ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _openArtifact(StudyArtifact artifact) async {
+    try {
+      if (artifact.kind == 'video_quiz') {
+        await _takeQuiz(artifact);
+        return;
+      }
+      if (artifact.kind == 'video_create' || artifact.kind == 'video_engage') {
+        await Navigator.of(context, rootNavigator: true).push<void>(
+          MaterialPageRoute<void>(
+            fullscreenDialog: true,
+            builder: (context) => _StudyToolViewerScreen(artifact: artifact),
+          ),
+        );
+        return;
+      }
+      if (mounted) {
+        setState(() => _error = 'This study tool cannot be opened yet.');
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = 'Could not open this study tool. $error');
+      }
+    }
   }
 
   Future<void> _takeQuiz(StudyArtifact artifact) async {
@@ -804,6 +849,361 @@ class _QuizOptionTile extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _StudyToolViewerScreen extends StatefulWidget {
+  const _StudyToolViewerScreen({required this.artifact});
+
+  final StudyArtifact artifact;
+
+  @override
+  State<_StudyToolViewerScreen> createState() => _StudyToolViewerScreenState();
+}
+
+class _StudyToolViewerScreenState extends State<_StudyToolViewerScreen> {
+  YoutubePlayerController? _player;
+
+  StudyArtifact get artifact => widget.artifact;
+
+  static String _formatTimestamp(num? seconds) {
+    final total = (seconds ?? 0).round().clamp(0, 24 * 60 * 60);
+    final minutes = total ~/ 60;
+    final secs = total % 60;
+    return '$minutes:${secs.toString().padLeft(2, '0')}';
+  }
+
+  static String _formatDuration(num? seconds) {
+    final total = (seconds ?? 0).round();
+    if (total <= 0) return '—';
+    if (total < 60) return '${total}s';
+    final minutes = total ~/ 60;
+    final secs = total % 60;
+    if (secs == 0) return '${minutes}m';
+    return '${minutes}m ${secs}s';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final videoId = artifact.sourceVideo?.id.trim() ?? '';
+    if (videoId.isNotEmpty) {
+      _player = YoutubePlayerController.fromVideoId(
+        videoId: videoId,
+        autoPlay: false,
+        params: const YoutubePlayerParams(
+          showFullscreenButton: true,
+          strictRelatedVideos: true,
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _player?.close();
+    super.dispose();
+  }
+
+  Future<void> _seekTo(num? seconds) async {
+    final player = _player;
+    if (player == null || seconds == null) return;
+    final value = seconds.toDouble();
+    if (value < 0) return;
+    try {
+      await player.seekTo(seconds: value, allowSeekAhead: true);
+      await player.playVideo();
+    } catch (_) {
+      // Player may not be ready yet; ignore seek failures.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isCreate = artifact.kind == 'video_create';
+    final hasPlayer = _player != null;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(artifact.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+          children: [
+            Text(
+              isCreate ? 'Create lesson' : 'Engage video',
+              style: TextStyle(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                letterSpacing: 0.2,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              artifact.title,
+              style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 16),
+            if (hasPlayer) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: YoutubePlayer(
+                    controller: _player!,
+                    aspectRatio: 16 / 9,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Tap a chapter or moment below to jump in the video.',
+                style: TextStyle(color: Colors.blueGrey.shade700, fontSize: 13, height: 1.35),
+              ),
+              const SizedBox(height: 18),
+            ] else if (isCreate) ...[
+              Card(
+                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
+                child: const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: Text(
+                    'This is a lesson script to record — there is no source video to play.',
+                    style: TextStyle(height: 1.4),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+            ] else ...[
+              Card(
+                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
+                child: const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: Text(
+                    'No playable YouTube source is linked to this plan yet. Regenerate from a YouTube URL to watch here.',
+                    style: TextStyle(height: 1.4),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+            ],
+            if (isCreate) ..._buildCreateBody(theme) else ..._buildEngageBody(theme),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildCreateBody(ThemeData theme) {
+    final payload = artifact.payload;
+    final scenes = (payload['scenes'] as List? ?? []).map((value) => jsonMap(value)).toList();
+    final title = '${payload['title'] ?? artifact.title}'.trim();
+    final audience = '${payload['audience'] ?? ''}'.trim();
+    final hook = '${payload['hook'] ?? ''}'.trim();
+    final cta = '${payload['call_to_action'] ?? ''}'.trim();
+    final duration = payload['duration_seconds'];
+
+    return [
+      if (title.isNotEmpty) _section(theme, 'Lesson title', title),
+      if (audience.isNotEmpty) _section(theme, 'Audience', audience),
+      _section(theme, 'Duration', _formatDuration(duration is num ? duration : num.tryParse('$duration'))),
+      if (hook.isNotEmpty) _section(theme, 'Hook', hook),
+      const SizedBox(height: 8),
+      Text('Scenes', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+      const SizedBox(height: 10),
+      if (scenes.isEmpty)
+        const _EmptyBlock(message: 'No scenes were saved for this lesson.')
+      else
+        ...scenes.asMap().entries.map((entry) {
+          final scene = entry.value;
+          final sceneTitle = '${scene['title'] ?? 'Scene ${entry.key + 1}'}'.trim();
+          final visual = '${scene['visual_direction'] ?? ''}'.trim();
+          final narration = '${scene['narration'] ?? ''}'.trim();
+          final onScreen = '${scene['on_screen_text'] ?? ''}'.trim();
+          final sceneDuration = scene['duration_seconds'];
+          return _DetailCard(
+            title: '${entry.key + 1}. $sceneTitle',
+            subtitle: _formatDuration(sceneDuration is num ? sceneDuration : num.tryParse('$sceneDuration')),
+            rows: [
+              if (visual.isNotEmpty) ('Visual', visual),
+              if (narration.isNotEmpty) ('Narration', narration),
+              if (onScreen.isNotEmpty) ('On-screen text', onScreen),
+            ],
+          );
+        }),
+      if (cta.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        _section(theme, 'Call to action', cta),
+      ],
+    ];
+  }
+
+  List<Widget> _buildEngageBody(ThemeData theme) {
+    final payload = artifact.payload;
+    final chapters = (payload['chapters'] as List? ?? []).map((value) => jsonMap(value)).toList();
+    final moments = (payload['engagement_moments'] as List? ?? []).map((value) => jsonMap(value)).toList();
+    final title = '${payload['title'] ?? artifact.title}'.trim();
+    final opening = '${payload['opening_hook'] ?? ''}'.trim();
+    final strategy = '${payload['strategy'] ?? ''}'.trim();
+    final closing = '${payload['closing_cta'] ?? ''}'.trim();
+    final canSeek = _player != null;
+
+    return [
+      if (title.isNotEmpty) _section(theme, 'Plan title', title),
+      if (opening.isNotEmpty) _section(theme, 'Opening hook', opening),
+      if (strategy.isNotEmpty) _section(theme, 'Strategy', strategy),
+      const SizedBox(height: 8),
+      Text('Chapters', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+      const SizedBox(height: 10),
+      if (chapters.isEmpty)
+        const _EmptyBlock(message: 'No chapters were saved for this plan.')
+      else
+        ...chapters.map((chapter) {
+          final chapterTitle = '${chapter['title'] ?? 'Chapter'}'.trim();
+          final ts = chapter['timestamp_seconds'];
+          final seconds = ts is num ? ts : num.tryParse('$ts');
+          return _DetailCard(
+            title: chapterTitle,
+            subtitle: _formatTimestamp(seconds),
+            rows: const [],
+            onTap: canSeek && seconds != null ? () => _seekTo(seconds) : null,
+          );
+        }),
+      const SizedBox(height: 8),
+      Text('Engagement moments', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+      const SizedBox(height: 10),
+      if (moments.isEmpty)
+        const _EmptyBlock(message: 'No engagement moments were saved for this plan.')
+      else
+        ...moments.map((moment) {
+          final momentTitle = '${moment['title'] ?? 'Moment'}'.trim();
+          final technique = '${moment['technique'] ?? ''}'.trim();
+          final edit = '${moment['suggested_edit'] ?? ''}'.trim();
+          final prompt = '${moment['learner_prompt'] ?? ''}'.trim();
+          final ts = moment['timestamp_seconds'];
+          final seconds = ts is num ? ts : num.tryParse('$ts');
+          return _DetailCard(
+            title: momentTitle,
+            subtitle: _formatTimestamp(seconds),
+            rows: [
+              if (technique.isNotEmpty) ('Technique', technique),
+              if (edit.isNotEmpty) ('Suggested edit', edit),
+              if (prompt.isNotEmpty) ('Learner prompt', prompt),
+            ],
+            onTap: canSeek && seconds != null ? () => _seekTo(seconds) : null,
+          );
+        }),
+      if (closing.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        _section(theme, 'Closing CTA', closing),
+      ],
+    ];
+  }
+
+  Widget _section(ThemeData theme, String label, String body) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(body, style: const TextStyle(height: 1.45, fontSize: 15)),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailCard extends StatelessWidget {
+  const _DetailCard({
+    required this.title,
+    required this.subtitle,
+    required this.rows,
+    this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<(String, String)> rows;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                    ),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                    if (onTap != null) ...[
+                      const SizedBox(width: 6),
+                      Icon(Icons.play_circle_outline, size: 18, color: theme.colorScheme.primary),
+                    ],
+                  ],
+                ),
+                for (final row in rows) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    row.$1,
+                    style: const TextStyle(color: Colors.blueGrey, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(row.$2, style: const TextStyle(height: 1.4, fontSize: 14)),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyBlock extends StatelessWidget {
+  const _EmptyBlock({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(message, style: TextStyle(color: Colors.blueGrey.shade700, height: 1.4)),
       ),
     );
   }

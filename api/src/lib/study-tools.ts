@@ -336,6 +336,45 @@ export function videoQuizGenerationKey(materialId: string): string {
   return `${materialId}:video_quiz`;
 }
 
+export type StudySourceVideo = {
+  id: string;
+  url: string;
+  embedUrl: string;
+};
+
+/** Extract an 11-char YouTube id from a LearnSphere YouTube material path. */
+export function youtubeVideoIdFromStoragePath(storagePath: string): string | null {
+  const match = storagePath.match(/youtube-([\w-]{11})(?:\.txt)?(?:$|[?#/])/i);
+  return match?.[1] ?? null;
+}
+
+export function sourceVideoFromStoragePath(
+  storagePath: string | null | undefined,
+): StudySourceVideo | null {
+  if (!storagePath) return null;
+  const id = youtubeVideoIdFromStoragePath(storagePath);
+  if (!id) return null;
+  return {
+    id,
+    url: `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`,
+    embedUrl: `https://www.youtube.com/embed/${encodeURIComponent(id)}`,
+  };
+}
+
+export function materialIdFromStudyArtifact(artifact: {
+  material_id?: string | null;
+  payload?: unknown;
+}): string | null {
+  if (typeof artifact.material_id === "string" && artifact.material_id.length > 0) {
+    return artifact.material_id;
+  }
+  const payload =
+    artifact.payload && typeof artifact.payload === "object" && !Array.isArray(artifact.payload)
+      ? (artifact.payload as Record<string, unknown>)
+      : null;
+  return payload && typeof payload.material_id === "string" ? payload.material_id : null;
+}
+
 /** Keep one video_quiz per material (newest wins); leave other kinds untouched. */
 export function dedupeStudyArtifacts<T extends {
   kind: string;
@@ -352,17 +391,7 @@ export function dedupeStudyArtifacts<T extends {
       continue;
     }
 
-    const fromColumn =
-      typeof artifact.material_id === "string" && artifact.material_id.length > 0
-        ? artifact.material_id
-        : null;
-    const payload =
-      artifact.payload && typeof artifact.payload === "object" && !Array.isArray(artifact.payload)
-        ? (artifact.payload as Record<string, unknown>)
-        : null;
-    const fromPayload =
-      payload && typeof payload.material_id === "string" ? payload.material_id : null;
-    const materialId = fromColumn ?? fromPayload;
+    const materialId = materialIdFromStudyArtifact(artifact);
 
     if (!materialId) {
       result.push(artifact);
