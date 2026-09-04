@@ -7,7 +7,9 @@ import {
   parseGeneratedStudyArtifact,
   parseStudyArtifactPayload,
   sampleChunksEvenly,
+  sourceVideoFromStoragePath,
   studyToolPrompt,
+  youtubeVideoIdFromStoragePath,
   type VideoCreatePayload,
   type VideoEngagePayload,
   type VideoQuizPayload,
@@ -120,6 +122,24 @@ describe("study tool payloads", () => {
     const chunks = Array.from({ length: 20 }, (_, index) => ({ id: index }));
     const sampled = sampleChunksEvenly(chunks, 5);
     expect(sampled.map((chunk) => chunk.id)).toEqual([0, 5, 10, 14, 19]);
+  });
+
+  it("extracts YouTube ids from material storage paths", () => {
+    expect(
+      youtubeVideoIdFromStoragePath(
+        "user/22222222-2222-4222-8222-222222222222/11111111-1111-4111-8111-111111111111/youtube-abc123XYZ01.txt",
+      ),
+    ).toBe("abc123XYZ01");
+    expect(sourceVideoFromStoragePath("materials/notes.pdf")).toBeNull();
+    expect(
+      sourceVideoFromStoragePath(
+        "user/x/y/youtube-dQw4w9WgXcQ.txt",
+      ),
+    ).toEqual({
+      id: "dQw4w9WgXcQ",
+      url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      embedUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
+    });
   });
 
   it("grades a single quiz question", () => {

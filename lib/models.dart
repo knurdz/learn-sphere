@@ -368,6 +368,24 @@ class MemeSlot {
       };
 }
 
+class StudySourceVideo {
+  const StudySourceVideo({
+    required this.id,
+    required this.url,
+    required this.embedUrl,
+  });
+
+  final String id;
+  final String url;
+  final String embedUrl;
+
+  factory StudySourceVideo.fromMap(Map<String, dynamic> map) => StudySourceVideo(
+        id: '${map['id'] ?? ''}',
+        url: '${map['url'] ?? ''}',
+        embedUrl: '${map['embedUrl'] ?? map['embed_url'] ?? ''}',
+      );
+}
+
 class StudyArtifact {
   const StudyArtifact({
     required this.id,
@@ -377,6 +395,7 @@ class StudyArtifact {
     required this.payload,
     required this.createdAt,
     this.progress,
+    this.sourceVideo,
   });
 
   final String id;
@@ -386,16 +405,21 @@ class StudyArtifact {
   final Map<String, dynamic> payload;
   final DateTime createdAt;
   final Progress? progress;
+  final StudySourceVideo? sourceVideo;
 
-  factory StudyArtifact.fromMap(Map<String, dynamic> map) => StudyArtifact(
-        id: '${map['id'] ?? ''}',
-        studySpaceId: '${map['study_space_id'] ?? map['studySpaceId'] ?? ''}',
-        kind: '${map['kind'] ?? 'video_quiz'}',
-        title: '${map['title'] ?? 'Study tool'}',
-        payload: jsonMap(map['payload']),
-        createdAt: DateTime.tryParse('${map['created_at'] ?? ''}') ?? DateTime.now(),
-        progress: map['progress'] == null ? null : Progress.fromMap(jsonMap(map['progress'])),
-      );
+  factory StudyArtifact.fromMap(Map<String, dynamic> map) {
+    final source = map['sourceVideo'] ?? map['source_video'];
+    return StudyArtifact(
+      id: '${map['id'] ?? ''}',
+      studySpaceId: '${map['study_space_id'] ?? map['studySpaceId'] ?? ''}',
+      kind: '${map['kind'] ?? 'video_quiz'}',
+      title: '${map['title'] ?? 'Study tool'}',
+      payload: jsonMap(map['payload']),
+      createdAt: DateTime.tryParse('${map['created_at'] ?? ''}') ?? DateTime.now(),
+      progress: map['progress'] == null ? null : Progress.fromMap(jsonMap(map['progress'])),
+      sourceVideo: source == null ? null : StudySourceVideo.fromMap(jsonMap(source)),
+    );
+  }
 }
 
 class LiveTutorSession {

@@ -73,7 +73,25 @@ function createSupabase(options: { materials?: unknown[]; chunks?: unknown[] }) 
         return chain({ data: { id: studySpaceId, name: "English" }, error: null });
       }
       if (table === "materials") {
-        return chain({ data: options.materials ?? [], error: null }, "limit");
+        const materials = options.materials ?? [];
+        const youtubeMaterial = {
+          id: materialId,
+          name: "Sample",
+          mime_type: "video/mp4",
+          storage_path: `user/${userId}/${materialId}/youtube-abc123XYZ01.txt`,
+        };
+        const builder: Record<string, ReturnType<typeof vi.fn>> = {};
+        for (const method of ["select", "eq", "in", "order", "limit"]) {
+          builder[method] = vi.fn(() => builder);
+        }
+        builder.maybeSingle = vi.fn(async () => ({
+          data: youtubeMaterial,
+          error: null,
+        }));
+        builder.then = vi.fn((onFulfilled: (value: { data: unknown; error: null }) => unknown) =>
+          Promise.resolve({ data: materials, error: null }).then(onFulfilled),
+        ) as never;
+        return builder;
       }
       if (table === "material_chunks") {
         return chain({ data: chunks, error: null }, "limit");
@@ -459,6 +477,24 @@ describe("GET /api/study-tools", () => {
         if (table === "learning_progress") {
           return chain({ data: [], error: null }, "limit");
         }
+        if (table === "materials") {
+          return chain(
+            {
+              data: [
+                {
+                  id: materialId,
+                  storage_path: `user/${userId}/${materialId}/youtube-abc123XYZ01.txt`,
+                },
+                {
+                  id: otherMaterial,
+                  storage_path: `user/${userId}/${otherMaterial}/notes.pdf`,
+                },
+              ],
+              error: null,
+            },
+            "limit",
+          );
+        }
         return chain({ data: null, error: null });
       }),
     };
@@ -475,8 +511,89 @@ describe("GET /api/study-tools", () => {
       ),
     );
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { artifacts: Array<{ id: string }> };
+    const body = (await response.json()) as {
+      artifacts: Array<{ id: string; sourceVideo: { id: string } | null }>;
+    };
     expect(body.artifacts.map((item) => item.id)).toEqual([first.id, second.id]);
+    expect(body.artifacts[0].sourceVideo).toEqual({
+      id: "abc123XYZ01",
+      url: "https://www.youtube.com/watch?v=abc123XYZ01",
+      embedUrl: "https://www.youtube.com/embed/abc123XYZ01",
+    });
+    expect(body.artifacts[1].sourceVideo).toBeNull();
+  });
+
+  it("attaches sourceVideo for engage tools linked to a YouTube material", async () => {
+    const engage = {
+      id: "55555555-5555-4555-8555-555555555555",
+      user_id: userId,
+      study_space_id: studySpaceId,
+      kind: "video_engage",
+      title: "Make video engaging: Sample",
+      material_id: materialId,
+      payload: {
+        material_id: materialId,
+        title: "Sample",
+        opening_hook: "Hook",
+        strategy: "Strategy",
+        chapters: [{ timestamp_seconds: 0, title: "Intro" }],
+        engagement_moments: [
+          {
+            timestamp_seconds: 12,
+            title: "Pause",
+            technique: "Recall",
+            suggested_edit: "Cut to card",
+            learner_prompt: "Predict",
+            source_ids: [],
+          },
+        ],
+        closing_cta: "Done",
+      },
+      created_at: new Date().toISOString(),
+    };
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "study_artifacts") {
+          return chain({ data: [engage], error: null }, "limit");
+        }
+        if (table === "learning_progress") {
+          return chain({ data: [], error: null }, "limit");
+        }
+        if (table === "materials") {
+          return chain(
+            {
+              data: [
+                {
+                  id: materialId,
+                  storage_path: `user/${userId}/${materialId}/youtube-dQw4w9WgXcQ.txt`,
+                },
+              ],
+              error: null,
+            },
+            "limit",
+          );
+        }
+        return chain({ data: null, error: null });
+      }),
+    };
+
+    vi.mocked(getAuthContext).mockResolvedValue({
+      configured: true,
+      user: { id: userId, email: "learner@test" },
+      supabase: supabase as never,
+    } as never);
+
+    const response = await GET(
+      new NextRequest(
+        `http://localhost/api/study-tools?studySpaceId=${studySpaceId}`,
+      ),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      artifacts: Array<{ sourceVideo: { id: string } | null }>;
+    };
+    expect(body.artifacts[0].sourceVideo?.id).toBe("dQw4w9WgXcQ");
   });
 });
 

@@ -6,11 +6,14 @@ import {
   dedupeStudyArtifacts,
   hideQuizAnswers,
   jsonValue,
+  materialIdFromStudyArtifact,
   parseGeneratedStudyArtifact,
   sampleChunksEvenly,
+  sourceVideoFromStoragePath,
   studyToolPrompt,
   videoQuizGenerationKey,
   type ClientArtifactPayload,
+  type StudySourceVideo,
 } from "@/lib/study-tools";
 import type {
   MaterialChunk,
@@ -147,10 +150,36 @@ export async function GET(request: NextRequest) {
     .eq("study_space_id", studySpaceId)
     .in("item_type", [...supportedKinds]);
 
-  const safeArtifacts: Array<StudyArtifact & { payload: ClientArtifactPayload }> = [];
-  for (const artifact of dedupeStudyArtifacts(artifacts ?? [])) {
+  const safeArtifacts: Array<
+    StudyArtifact & { payload: ClientArtifactPayload; sourceVideo: StudySourceVideo | null }
+  > = [];
+  const deduped = dedupeStudyArtifacts(artifacts ?? []);
+  const materialIdsNeeded = new Set<string>();
+  for (const artifact of deduped) {
+    const materialId = materialIdFromStudyArtifact(artifact as StudyArtifact);
+    if (materialId) materialIdsNeeded.add(materialId);
+  }
+
+  const storageByMaterialId = new Map<string, string>();
+  if (materialIdsNeeded.size > 0) {
+    const { data: materials } = await context.supabase
+      .from("materials")
+      .select("id,storage_path")
+      .eq("user_id", context.user.id)
+      .in("id", [...materialIdsNeeded]);
+    for (const material of materials ?? []) {
+      storageByMaterialId.set(material.id, material.storage_path);
+    }
+  }
+
+  for (const artifact of deduped) {
     try {
-      safeArtifacts.push(hideQuizAnswers(artifact as StudyArtifact));
+      const client = hideQuizAnswers(artifact as StudyArtifact);
+      const materialId = materialIdFromStudyArtifact(artifact as StudyArtifact);
+      const sourceVideo = materialId
+        ? sourceVideoFromStoragePath(storageByMaterialId.get(materialId))
+        : null;
+      safeArtifacts.push({ ...client, sourceVideo });
     } catch {
       // Skip rows that cannot be parsed (e.g. corrupt payloads) instead of
       // failing the whole Study tools list.
@@ -266,7 +295,11 @@ export async function POST(request: NextRequest) {
 
   const materialIds = materialResult.materials.map((material) => material.id);
   const boundMaterialId =
-    kind === "video_quiz" || kind === "video_engage" ? materialIds[0] : undefined;
+    kind === "video_quiz" || kind === "video_engage"
+      ? materialIds[0]
+      : kind === "video_create" && youtubeUrl && materialIds[0]
+        ? materialIds[0]
+        : undefined;
   const generationKey =
     kind === "video_quiz" && boundMaterialId
       ? videoQuizGenerationKey(boundMaterialId)
@@ -547,7 +580,22 @@ export async function POST(request: NextRequest) {
     metadata: { artifactId: artifact.id, kind },
   });
 
+  let sourceVideo: StudySourceVideo | null = null;
+  const materialId = materialIdFromStudyArtifact(artifact);
+  if (materialId) {
+    const { data: material } = await context.supabase
+      .from("materials")
+      .select("storage_path")
+      .eq("id", materialId)
+      .eq("user_id", context.user.id)
+      .maybeSingle();
+    sourceVideo = sourceVideoFromStoragePath(material?.storage_path);
+  }
+
   return NextResponse.json({
-    artifact: hideQuizAnswers(artifact),
+    artifact: {
+      ...hideQuizAnswers(artifact),
+      sourceVideo,
+    },
   });
 }
