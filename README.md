@@ -395,17 +395,23 @@ Pick your connected device or emulator when prompted.
 
    You should see your device as `device` (not `unauthorized`).
 
-5. Forward the API port so the phone can use `127.0.0.1:3000`:
+5. Forward the API port so the phone can use `127.0.0.1:3000` (do this after unplug/reboot too):
 
    ```bash
-   adb reverse tcp:3000 tcp:3000
+   ./scripts/ensure_android_api_tunnel.sh
    ```
 
-   Re-run this after unplugging the phone or rebooting either device.
+   Or launch with the tunnel baked in:
+
+   ```bash
+   ./scripts/run_android.sh
+   ```
+
+   In Cursor / VS Code, use the **LearnSphere (Android device)** launch config — it runs the tunnel automatically before `flutter run`.
 
 6. Start the API (`cd api && pnpm dev`) with `API_BASE_URL=http://127.0.0.1:3000` in root `.env.local`.
 
-7. Run the app:
+7. If you did not use `./scripts/run_android.sh`, run the app:
 
    ```bash
    flutter pub get
@@ -614,7 +620,7 @@ You can deploy [`api/`](api/) alone to Vercel or Cloud Run; run the live worker 
 |---------|----------------|
 | `adb: device unauthorized` | Revoke USB debugging authorizations on the phone, reconnect, accept RSA prompt |
 | `adb: command not found` | Install Android platform-tools; add `adb` to your `PATH` |
-| App cannot reach API on Android | Run `adb reverse tcp:3000 tcp:3000`; confirm API is up; use `127.0.0.1` not `localhost` |
+| App cannot reach API on Android | Run `./scripts/ensure_android_api_tunnel.sh` (or launch **LearnSphere (Android device)**); confirm API is up with `cd api && pnpm dev`; use `127.0.0.1` not `localhost` |
 | App cannot reach API on Wi‑Fi | Use `-H 0.0.0.0` and LAN IP in `API_BASE_URL`; same network as dev machine |
 | Email confirm link fails | Add `learnsphere://auth/callback` in Supabase redirect URLs |
 | Build error: asset `.env.local` missing | Copy `.env.example` → `.env.local` at repo root |

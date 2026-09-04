@@ -9,31 +9,38 @@ import type {
 
 const sourceIds = z.array(z.string()).default([]);
 
-const videoQuizSchema = z.object({
+function quizQuestionSchema(minOptions: number) {
+  return z
+    .object({
+      id: z.string().min(1),
+      prompt: z.string().min(1),
+      options: z.array(z.string().min(1)).min(minOptions),
+      correct_index: z.number().int().nonnegative(),
+      explanation: z.string().min(1),
+      source_ids: sourceIds,
+      timestamp_seconds: z.number().nonnegative(),
+    })
+    .superRefine((question, context) => {
+      if (question.correct_index >= question.options.length) {
+        context.addIssue({
+          code: "custom",
+          message: "correct_index must point to an option",
+          path: ["correct_index"],
+        });
+      }
+    });
+}
+
+/** Strict schema for newly generated quizzes. */
+const videoQuizGeneratedSchema = z.object({
   material_id: z.string().uuid(),
-  questions: z
-    .array(
-      z
-        .object({
-          id: z.string().min(1),
-          prompt: z.string().min(1),
-          options: z.array(z.string().min(1)).min(2),
-          correct_index: z.number().int().nonnegative(),
-          explanation: z.string().min(1),
-          source_ids: sourceIds,
-          timestamp_seconds: z.number().nonnegative(),
-        })
-        .superRefine((question, context) => {
-          if (question.correct_index >= question.options.length) {
-            context.addIssue({
-              code: "custom",
-              message: "correct_index must point to an option",
-              path: ["correct_index"],
-            });
-          }
-        }),
-    )
-    .min(1),
+  questions: z.array(quizQuestionSchema(4)).min(5),
+});
+
+/** Lenient schema for quizzes already saved in the database (including older 1-question quizzes). */
+const videoQuizStoredSchema = z.object({
+  material_id: z.string().uuid(),
+  questions: z.array(quizQuestionSchema(2)).min(1),
 });
 
 const videoSceneSchema = z.object({
@@ -81,7 +88,7 @@ const videoEngageSchema = z.object({
   closing_cta: z.string().min(1),
 });
 
-export type VideoQuizPayload = z.infer<typeof videoQuizSchema>;
+export type VideoQuizPayload = z.infer<typeof videoQuizStoredSchema>;
 export type VideoCreatePayload = z.infer<typeof videoCreateSchema>;
 export type VideoEngagePayload = z.infer<typeof videoEngageSchema>;
 export type ArtifactPayload =
@@ -100,8 +107,14 @@ export type ClientArtifactPayload =
   | VideoCreatePayload
   | VideoEngagePayload;
 
-const schemaForKind = {
-  video_quiz: videoQuizSchema,
+const generatedSchemaForKind = {
+  video_quiz: videoQuizGeneratedSchema,
+  video_create: videoCreateSchema,
+  video_engage: videoEngageSchema,
+} satisfies Record<StudyArtifactKind, z.ZodType<ArtifactPayload>>;
+
+const storedSchemaForKind = {
+  video_quiz: videoQuizStoredSchema,
   video_create: videoCreateSchema,
   video_engage: videoEngageSchema,
 } satisfies Record<StudyArtifactKind, z.ZodType<ArtifactPayload>>;
@@ -110,20 +123,38 @@ export function parseStudyArtifactPayload(
   kind: StudyArtifactKind,
   value: unknown,
 ): ArtifactPayload {
-  return schemaForKind[kind].parse(value);
+  return storedSchemaForKind[kind].parse(value);
+}
+
+function parseGeneratedPayload(kind: StudyArtifactKind, value: unknown): ArtifactPayload {
+  return generatedSchemaForKind[kind].parse(value);
 }
 
 export function parseGeneratedStudyArtifact(
   kind: StudyArtifactKind,
   raw: string,
+  options: { materialId?: string } = {},
 ): ArtifactPayload {
   const candidate = raw
     .replace(/^\x60\x60\x60(?:json)?/i, "")
     .replace(/\x60\x60\x60$/i, "")
     .trim();
 
+  const withMaterialId = (value: unknown) => {
+    if (
+      (kind === "video_quiz" || kind === "video_engage") &&
+      options.materialId &&
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value)
+    ) {
+      return { ...(value as Record<string, unknown>), material_id: options.materialId };
+    }
+    return value;
+  };
+
   try {
-    return parseStudyArtifactPayload(kind, JSON.parse(candidate));
+    return parseGeneratedPayload(kind, withMaterialId(JSON.parse(candidate)));
   } catch (firstError) {
     // Some providers still wrap valid JSON in a short explanation. Only
     // remove surrounding text; schema validation remains authoritative.
@@ -131,9 +162,9 @@ export function parseGeneratedStudyArtifact(
     const end = candidate.lastIndexOf("}");
     if (start >= 0 && end > start) {
       try {
-        return parseStudyArtifactPayload(
+        return parseGeneratedPayload(
           kind,
-          JSON.parse(candidate.slice(start, end + 1)),
+          withMaterialId(JSON.parse(candidate.slice(start, end + 1))),
         );
       } catch {
         // Preserve the original parse error for a useful failure message.
@@ -194,14 +225,31 @@ export function studyToolPrompt(
   context: string,
   brief = "",
   languageCode: AppLanguageCode = "en",
+  materialId?: string,
 ): string {
+  const materialIdRule = materialId
+    ? ` The material_id field must be exactly "${materialId}".`
+    : "";
   const outputRules = {
     video_quiz:
-      'Return JSON with {"material_id":"video-material-uuid","questions":[{"id":"q1","prompt":"...","options":["..."],"correct_index":0,"explanation":"...","source_ids":["chunk-id"],"timestamp_seconds":0}]}. Use timestamps from the supplied video excerpts.',
+      'Return JSON with {"material_id":"' +
+      (materialId || "video-material-uuid") +
+      '","questions":[{"id":"q1","prompt":"...","options":["...","...","...","..."],"correct_index":0,"explanation":"...","source_ids":["chunk-id"],"timestamp_seconds":0}]}.' +
+      materialIdRule +
+      " Create exactly 5 education-oriented multiple-choice questions." +
+      " Each question must name or clearly target a concept or skill from the excerpts and ask why/how/compare/apply — not what the caption literally said." +
+      " Each question must have exactly 4 plausible options; wrong options should reflect common misconceptions, not nonsense or near-identical wording." +
+      " Each explanation must teach the idea in 1–2 clear sentences (especially useful when the learner is wrong)." +
+      " Do NOT ask trivia about whether the viewer watched the video, exact wording, speaker names, channel branding, or timestamps as the learning goal." +
+      " Cover different parts of the lesson; use timestamps only as optional anchors.",
     video_create:
       'Create an original educational video blueprint. Return JSON with {"title":"...","audience":"...","duration_seconds":180,"hook":"...","scenes":[{"id":"scene-1","title":"...","duration_seconds":30,"visual_direction":"...","narration":"...","on_screen_text":"...","source_ids":["chunk-id"]}],"call_to_action":"..."}. Make the scenes practical enough for a presenter or video editor to produce. If source excerpts are present, use them for factual grounding; otherwise use the user brief as the creative source and keep source_ids empty.',
     video_engage:
-      'Create a video engagement makeover plan for the supplied lesson video. Return JSON with {"material_id":"video-material-uuid","title":"...","opening_hook":"...","strategy":"...","chapters":[{"timestamp_seconds":0,"title":"..."}],"engagement_moments":[{"timestamp_seconds":30,"title":"...","technique":"...","suggested_edit":"...","learner_prompt":"...","source_ids":["chunk-id"]}],"closing_cta":"..."}. Use only supplied video excerpts and use their timestamps.',
+      'Create a video engagement makeover plan for the supplied lesson video. Return JSON with {"material_id":"' +
+      (materialId || "video-material-uuid") +
+      '","title":"...","opening_hook":"...","strategy":"...","chapters":[{"timestamp_seconds":0,"title":"..."}],"engagement_moments":[{"timestamp_seconds":30,"title":"...","technique":"...","suggested_edit":"...","learner_prompt":"...","source_ids":["chunk-id"]}],"closing_cta":"..."}.' +
+      materialIdRule +
+      " Use only supplied video excerpts and use their timestamps.",
   }[kind];
 
   const briefInstruction =
@@ -225,6 +273,25 @@ export function studyToolPrompt(
   );
 }
 
+/** Pick up to `count` chunks spread evenly across the timeline / list order. */
+export function sampleChunksEvenly<T>(chunks: T[], count: number): T[] {
+  if (count <= 0 || chunks.length === 0) return [];
+  if (chunks.length <= count) return [...chunks];
+
+  const indices = new Set<number>();
+  const lastIndex = chunks.length - 1;
+  for (let i = 0; i < count; i += 1) {
+    const index = Math.round((i * lastIndex) / (count - 1));
+    indices.add(index);
+  }
+  for (let i = 0; i < chunks.length && indices.size < count; i += 1) {
+    indices.add(i);
+  }
+  return [...indices]
+    .sort((a, b) => a - b)
+    .map((index) => chunks[index]!);
+}
+
 export function quizResult(
   payload: VideoQuizPayload,
   answers: Record<string, number>,
@@ -243,6 +310,70 @@ export function quizResult(
     total: payload.questions.length,
     feedback,
   };
+}
+
+export function gradeQuizQuestion(
+  payload: VideoQuizPayload,
+  questionId: string,
+  answer: number,
+) {
+  const question = payload.questions.find((item) => item.id === questionId);
+  if (!question) {
+    throw new Error("Question not found.");
+  }
+  if (answer < 0 || answer >= question.options.length) {
+    throw new Error("Answer index is out of range.");
+  }
+  return {
+    questionId: question.id,
+    correct: answer === question.correct_index,
+    correctIndex: question.correct_index,
+    explanation: question.explanation,
+  };
+}
+
+export function videoQuizGenerationKey(materialId: string): string {
+  return `${materialId}:video_quiz`;
+}
+
+/** Keep one video_quiz per material (newest wins); leave other kinds untouched. */
+export function dedupeStudyArtifacts<T extends {
+  kind: string;
+  material_id?: string | null;
+  payload?: unknown;
+  created_at?: string;
+}>(artifacts: T[]): T[] {
+  const seenQuizMaterials = new Set<string>();
+  const result: T[] = [];
+
+  for (const artifact of artifacts) {
+    if (artifact.kind !== "video_quiz") {
+      result.push(artifact);
+      continue;
+    }
+
+    const fromColumn =
+      typeof artifact.material_id === "string" && artifact.material_id.length > 0
+        ? artifact.material_id
+        : null;
+    const payload =
+      artifact.payload && typeof artifact.payload === "object" && !Array.isArray(artifact.payload)
+        ? (artifact.payload as Record<string, unknown>)
+        : null;
+    const fromPayload =
+      payload && typeof payload.material_id === "string" ? payload.material_id : null;
+    const materialId = fromColumn ?? fromPayload;
+
+    if (!materialId) {
+      result.push(artifact);
+      continue;
+    }
+    if (seenQuizMaterials.has(materialId)) continue;
+    seenQuizMaterials.add(materialId);
+    result.push(artifact);
+  }
+
+  return result;
 }
 
 export function jsonValue(value: unknown): Json {

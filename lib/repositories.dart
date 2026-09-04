@@ -323,12 +323,16 @@ class StudyRepository {
     String kind, {
     String? brief,
     String? youtubeUrl,
+    bool allowAudioTranscription = false,
+    bool replaceExisting = false,
   }) {
     return bridge.generateStudyTool(
       studySpaceId: studySpaceId,
       kind: kind,
       brief: brief,
       youtubeUrl: youtubeUrl,
+      allowAudioTranscription: allowAudioTranscription,
+      replaceExisting: replaceExisting,
     );
   }
 

@@ -1,0 +1,16 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Ensure Android API tunnel",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/ensure_android_api_tunnel.sh",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared",
+        "showReuseMessage": false
+      }
+    }
+  ]
+}
