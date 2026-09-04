@@ -27,7 +27,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   ) {
     return [
       (path: '/feed', label: l10n.navFeed, icon: Icons.dynamic_feed_outlined, selectedIcon: Icons.dynamic_feed),
-      (path: '/learn', label: l10n.navLearn, icon: Icons.school_outlined, selectedIcon: Icons.school),
+      (path: '/learn?tab=live', label: l10n.navLearn, icon: Icons.school_outlined, selectedIcon: Icons.school),
       (path: '/library', label: l10n.navLibrary, icon: Icons.folder_copy_outlined, selectedIcon: Icons.folder_copy),
     ];
   }
@@ -36,7 +36,8 @@ class _AppShellState extends ConsumerState<AppShell> {
     if (location.startsWith('/learn')) return 1;
     final tabs = destinations(l10n);
     for (var i = 0; i < tabs.length; i++) {
-      if (location.startsWith(tabs[i].path)) return i;
+      final path = tabs[i].path.split('?').first;
+      if (location.startsWith(path)) return i;
     }
     return 0;
   }

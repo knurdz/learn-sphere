@@ -2,6 +2,18 @@ import { requiredServerEnv } from "./config";
 
 export type GroqMessage = { role: "user" | "assistant"; content: string };
 
+const MAX_RATE_LIMIT_RETRIES = 3;
+const DEFAULT_RETRY_DELAY_MS = 4_000;
+
+export class GroqRateLimitError extends Error {
+  constructor(
+    message = "The AI is briefly busy. Wait a few seconds and try again.",
+  ) {
+    super(message);
+    this.name = "GroqRateLimitError";
+  }
+}
+
 function getGroqConfig() {
   return {
     apiKey: requiredServerEnv("GROQ_API_KEY"),
@@ -10,7 +22,26 @@ function getGroqConfig() {
   };
 }
 
-export async function generateGroqText(input: {
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+export function parseGroqRetryDelayMs(message: string | undefined): number {
+  if (!message) return DEFAULT_RETRY_DELAY_MS;
+  const match = message.match(/try again in\s+([\d.]+)\s*s/i);
+  if (!match) return DEFAULT_RETRY_DELAY_MS;
+  const seconds = Number(match[1]);
+  if (!Number.isFinite(seconds) || seconds <= 0) return DEFAULT_RETRY_DELAY_MS;
+  return Math.min(Math.ceil(seconds * 1000) + 250, 30_000);
+}
+
+function isRateLimitMessage(status: number, message: string | undefined) {
+  if (status === 429) return true;
+  if (!message) return false;
+  return /rate limit|tokens per minute|tpm|try again in/i.test(message);
+}
+
+async function generateGroqTextOnce(input: {
   system: string;
   messages: GroqMessage[];
   maxTokens?: number;
@@ -38,12 +69,42 @@ export async function generateGroqText(input: {
   } | null;
 
   if (!response.ok) {
-    throw new Error(body?.error?.message || "Groq request failed.");
+    const errorMessage = body?.error?.message || "Groq request failed.";
+    if (isRateLimitMessage(response.status, errorMessage)) {
+      const error = new GroqRateLimitError();
+      (error as GroqRateLimitError & { retryAfterMs: number }).retryAfterMs =
+        parseGroqRetryDelayMs(errorMessage);
+      throw error;
+    }
+    throw new Error(errorMessage);
   }
 
   const text = body?.choices?.[0]?.message?.content?.trim();
   if (!text) throw new Error("Groq returned an empty response.");
   return text;
+}
+
+export async function generateGroqText(input: {
+  system: string;
+  messages: GroqMessage[];
+  maxTokens?: number;
+  temperature?: number;
+}) {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await generateGroqTextOnce(input);
+    } catch (error) {
+      if (!(error instanceof GroqRateLimitError) || attempt >= MAX_RATE_LIMIT_RETRIES) {
+        throw error;
+      }
+      const retryAfterMs =
+        (error as GroqRateLimitError & { retryAfterMs?: number }).retryAfterMs ??
+        DEFAULT_RETRY_DELAY_MS;
+      attempt += 1;
+      await sleep(retryAfterMs);
+    }
+  }
 }
 
 export async function transcribeFile(input: {

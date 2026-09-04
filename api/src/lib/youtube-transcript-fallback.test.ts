@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("youtube-transcript", () => ({
-  fetchTranscript: vi.fn(),
-}));
-
 vi.mock("@distube/ytdl-core", () => ({
   default: {
     getInfo: vi.fn(),
@@ -16,36 +12,170 @@ vi.mock("@/lib/providers/groq", () => ({
 }));
 
 import ytdl from "@distube/ytdl-core";
-import { fetchTranscript as fetchYouTubeTranscript } from "youtube-transcript";
 import { transcribeFile } from "@/lib/providers/groq";
-import { fetchTranscriptSegments, getYouTubeVideoContext } from "./youtube";
+import {
+  fetchTranscriptSegments,
+  getYouTubeVideoContext,
+  getYouTubeVideoSource,
+  YouTubeCaptionsMissingError,
+} from "./youtube";
+
+function playerResponse(options: {
+  status?: string;
+  reason?: string;
+  tracks?: Array<{
+    baseUrl?: string;
+    languageCode?: string;
+    kind?: string;
+  }>;
+  formats?: Array<Record<string, unknown>>;
+  title?: string;
+  author?: string;
+}) {
+  return {
+    playabilityStatus: {
+      status: options.status ?? "OK",
+      reason: options.reason,
+    },
+    videoDetails: {
+      title: options.title ?? "Sample",
+      author: options.author ?? "Creator",
+      lengthSeconds: "120",
+      isLiveContent: false,
+    },
+    captions: options.tracks
+      ? {
+          playerCaptionsTracklistRenderer: {
+            captionTracks: options.tracks,
+          },
+        }
+      : undefined,
+    streamingData: {
+      adaptiveFormats: options.formats ?? [],
+      formats: [],
+    },
+  };
+}
 
 describe("YouTube transcript fallback", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(ytdl.getInfo).mockReset();
+    vi.mocked(ytdl.chooseFormat).mockReset();
+    vi.mocked(transcribeFile).mockReset();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("converts youtube-transcript millisecond offsets to seconds", async () => {
-    vi.mocked(fetchYouTubeTranscript).mockResolvedValue([
-      { text: "Intro", offset: 2000, duration: 3000 },
-    ] as never);
+  it("loads timed InnerTube captions including auto-generated tracks", async () => {
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/youtubei/v1/player")) {
+        expect(init?.method).toBe("POST");
+        return new Response(
+          JSON.stringify(
+            playerResponse({
+              tracks: [
+                {
+                  baseUrl: "https://www.youtube.com/api/timedtext?v=abc123",
+                  languageCode: "en",
+                  kind: "asr",
+                },
+              ],
+            }),
+          ),
+          { status: 200 },
+        );
+      }
+      if (url.startsWith("https://www.youtube.com/api/timedtext")) {
+        expect(url).toContain("fmt=json3");
+        return new Response(
+          JSON.stringify({
+            events: [
+              {
+                tStartMs: 2000,
+                dDurationMs: 3000,
+                segs: [{ utf8: "Intro" }],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
-    const segments = await fetchTranscriptSegments("abc123");
+    const segments = await fetchTranscriptSegments("abc123XYZ01");
     expect(segments).toEqual([{ text: "Intro", startSeconds: 2, endSeconds: 5 }]);
     expect(transcribeFile).not.toHaveBeenCalled();
   });
 
-  it("falls back to audio transcription when captions are unavailable", async () => {
-    vi.mocked(fetchYouTubeTranscript).mockRejectedValue(new Error("No captions"));
+  it("prefers the app locale caption track when available", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/youtubei/v1/player")) {
+        return new Response(
+          JSON.stringify(
+            playerResponse({
+              tracks: [
+                {
+                  baseUrl: "https://www.youtube.com/api/timedtext?lang=en",
+                  languageCode: "en",
+                },
+                {
+                  baseUrl: "https://www.youtube.com/api/timedtext?lang=ta",
+                  languageCode: "ta",
+                },
+              ],
+            }),
+          ),
+          { status: 200 },
+        );
+      }
+      if (url.includes("lang=ta")) {
+        return new Response(
+          JSON.stringify({
+            events: [{ tStartMs: 0, dDurationMs: 1000, segs: [{ utf8: "வணக்கம்" }] }],
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const segments = await fetchTranscriptSegments("abc123XYZ01", {
+      preferredLanguage: "ta",
+    });
+    expect(segments[0]?.text).toBe("வணக்கம்");
+  });
+
+  it("does not transcribe audio unless allowAudioTranscription is true", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/youtubei/v1/player")) {
+        return new Response(JSON.stringify(playerResponse({})), { status: 200 });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const segments = await fetchTranscriptSegments("abc123XYZ01");
+    expect(segments).toEqual([]);
+    expect(transcribeFile).not.toHaveBeenCalled();
+    expect(ytdl.getInfo).not.toHaveBeenCalled();
+  });
+
+  it("falls back to audio transcription when captions are unavailable and allowed", async () => {
     vi.mocked(ytdl.getInfo).mockResolvedValue({ formats: [{}] } as never);
     vi.mocked(ytdl.chooseFormat).mockReturnValue({
       url: "https://media.example/audio.webm",
       container: "webm",
       hasAudio: true,
+      contentLength: "1000",
     } as never);
     vi.mocked(transcribeFile).mockResolvedValue([
       { text: "Audio transcript", startSeconds: 4, endSeconds: 9 },
@@ -53,8 +183,8 @@ describe("YouTube transcript fallback", () => {
 
     const fetchMock = vi.fn(async (input: string | URL) => {
       const url = String(input);
-      if (url.startsWith("https://www.youtube.com/watch?v=")) {
-        return new Response("{}", { status: 500 });
+      if (url.includes("/youtubei/v1/player")) {
+        return new Response(JSON.stringify(playerResponse({})), { status: 200 });
       }
       if (url === "https://media.example/audio.webm") {
         return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
@@ -63,96 +193,109 @@ describe("YouTube transcript fallback", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const segments = await fetchTranscriptSegments("abc123");
+    const segments = await fetchTranscriptSegments("abc123XYZ01", {
+      allowAudioTranscription: true,
+    });
     expect(segments).toEqual([
       { text: "Audio transcript", startSeconds: 4, endSeconds: 9 },
     ]);
     expect(transcribeFile).toHaveBeenCalledOnce();
   });
 
-  it("falls back to progressive hasAudio when audioonly format selection fails", async () => {
-    vi.mocked(fetchYouTubeTranscript).mockRejectedValue(new Error("No captions"));
-    vi.mocked(ytdl.getInfo).mockResolvedValue({
-      formats: [
-        {
-          itag: 18,
-          url: "https://media.example/progressive.mp4",
-          mimeType: "video/mp4",
-          container: "mp4",
-          hasAudio: true,
-          hasVideo: true,
-          contentLength: "10600000",
-        },
-      ],
-    } as never);
-    vi.mocked(ytdl.chooseFormat).mockImplementation((_formats, options) => {
-      if (options && "filter" in options && options.filter === "audioonly") {
-        throw new Error("No such format found: highestaudio");
-      }
-      return {
-        itag: 18,
-        url: "https://media.example/progressive.mp4",
-        mimeType: "video/mp4",
-        container: "mp4",
-        hasAudio: true,
-        hasVideo: true,
-      } as never;
-    });
+  it("uses InnerTube streaming audio before ytdl when allowed", async () => {
     vi.mocked(transcribeFile).mockResolvedValue([
-      { text: "Progressive transcript", startSeconds: 1, endSeconds: 8 },
+      { text: "InnerTube audio", startSeconds: 1, endSeconds: 3 },
     ] as never);
 
     const fetchMock = vi.fn(async (input: string | URL) => {
       const url = String(input);
-      if (url.startsWith("https://www.youtube.com/watch?v=")) {
-        return new Response("{}", { status: 500 });
+      if (url.includes("/youtubei/v1/player")) {
+        return new Response(
+          JSON.stringify(
+            playerResponse({
+              formats: [
+                {
+                  url: "https://media.example/innertube-audio.m4a",
+                  mimeType: "audio/mp4",
+                  audioQuality: "AUDIO_QUALITY_MEDIUM",
+                  contentLength: "2048",
+                },
+              ],
+            }),
+          ),
+          { status: 200 },
+        );
       }
-      if (url === "https://media.example/progressive.mp4") {
+      if (url === "https://media.example/innertube-audio.m4a") {
         return new Response(new Uint8Array([4, 5, 6]), { status: 200 });
       }
       throw new Error(`Unexpected URL: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const segments = await fetchTranscriptSegments("abc123");
-    expect(segments).toEqual([
-      { text: "Progressive transcript", startSeconds: 1, endSeconds: 8 },
-    ]);
+    const segments = await fetchTranscriptSegments("abc123XYZ01", {
+      allowAudioTranscription: true,
+    });
+    expect(segments[0]?.text).toBe("InnerTube audio");
+    expect(ytdl.getInfo).not.toHaveBeenCalled();
     expect(transcribeFile).toHaveBeenCalledWith(
       expect.objectContaining({
         mimeType: "audio/mp4",
-        fileName: "youtube-abc123.m4a",
+        fileName: "youtube-abc123XYZ01.m4a",
       }),
     );
   });
 
-  it("returns empty transcript segments when both captions and transcription fail", async () => {
-    vi.mocked(fetchYouTubeTranscript).mockRejectedValue(new Error("No captions"));
-    vi.mocked(ytdl.getInfo).mockRejectedValue(new Error("Cannot resolve stream"));
+  it("throws captions-missing when study tools disallow audio transcription", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/youtubei/v1/player")) {
+        return new Response(JSON.stringify(playerResponse({})), { status: 200 });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 500 })));
-    const segments = await fetchTranscriptSegments("abc123");
-    expect(segments).toEqual([]);
+    await expect(getYouTubeVideoSource("https://www.youtube.com/watch?v=abc123XYZ01")).rejects.toBeInstanceOf(
+      YouTubeCaptionsMissingError,
+    );
   });
 
-  it("returns actionable context error when no transcript source is available", async () => {
-    vi.mocked(fetchYouTubeTranscript).mockRejectedValue(new Error("No captions"));
+  it("returns actionable context error when live tutor audio also fails", async () => {
     vi.mocked(ytdl.getInfo).mockRejectedValue(new Error("Cannot resolve stream"));
 
     const fetchMock = vi.fn(async (input: string | URL) => {
       const url = String(input);
-      if (url.includes("/oembed")) {
-        return new Response(
-          JSON.stringify({ title: "Sample", author_name: "Creator" }),
-          { status: 200 },
-        );
+      if (url.includes("/youtubei/v1/player")) {
+        return new Response(JSON.stringify(playerResponse({})), { status: 200 });
       }
       return new Response("{}", { status: 500 });
     });
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
-      getYouTubeVideoContext("https://www.youtube.com/watch?v=abc123"),
+      getYouTubeVideoContext("https://www.youtube.com/watch?v=abc123XYZ01"),
     ).rejects.toThrow(/captions or audio transcription/i);
+  });
+
+  it("surfaces age-restricted playability errors", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/youtubei/v1/player")) {
+        return new Response(
+          JSON.stringify(
+            playerResponse({
+              status: "LOGIN_REQUIRED",
+              reason: "Sign in to confirm your age",
+            }),
+          ),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchTranscriptSegments("abc123XYZ01")).rejects.toThrow(/sign-in/i);
   });
 });

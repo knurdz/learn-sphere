@@ -15,7 +15,9 @@ class LearnScreen extends StatefulWidget {
 }
 
 class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+  late final TabController _tabController;
+  String? _lastQueryTab;
+  bool _seeded = false;
 
   @override
   void initState() {
@@ -26,15 +28,38 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _applyQueryTab();
-  }
-
-  void _applyQueryTab() {
     final tab = GoRouterState.of(context).uri.queryParameters['tab'];
-    final index = tab == 'tools' ? 1 : 0;
+    final normalized = tab == 'tools' || tab == 'live' ? tab : null;
+
+    if (!_seeded) {
+      _seeded = true;
+      _lastQueryTab = normalized;
+      final index = normalized == 'tools' ? 1 : 0;
+      if (_tabController.index != index) {
+        _tabController.index = index;
+      }
+      return;
+    }
+
+    // Only react when an external navigation actually changes ?tab=.
+    if (normalized == null || normalized == _lastQueryTab) return;
+    _lastQueryTab = normalized;
+    final index = normalized == 'tools' ? 1 : 0;
     if (_tabController.index != index) {
       _tabController.index = index;
     }
+  }
+
+  void _onTabTapped(int index) {
+    final desired = index == 1 ? 'tools' : 'live';
+    if (_lastQueryTab == desired) return;
+    _lastQueryTab = desired;
+    final drawer = GoRouterState.of(context).uri.queryParameters['drawer'];
+    final params = <String, String>{'tab': desired};
+    if (drawer != null && drawer.isNotEmpty && desired == 'live') {
+      params['drawer'] = drawer;
+    }
+    context.replace(Uri(path: '/learn', queryParameters: params).toString());
   }
 
   @override
@@ -83,6 +108,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: TabBar(
             controller: _tabController,
+            onTap: _onTabTapped,
             tabs: [
               Tab(
                 key: CoachTourScope.targetKey(context, 'learn_live'),
@@ -99,12 +125,17 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
         ),
         const SizedBox(height: 8),
         Expanded(
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              LiveTutorPanel(openChatOnLoad: _openChatDrawer),
-              const StudyToolsPanel(),
-            ],
+          child: AnimatedBuilder(
+            animation: _tabController,
+            builder: (context, _) {
+              return IndexedStack(
+                index: _tabController.index,
+                children: [
+                  LiveTutorPanel(openChatOnLoad: _openChatDrawer),
+                  const StudyToolsPanel(),
+                ],
+              );
+            },
           ),
         ),
       ],

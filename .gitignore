@@ -13,7 +13,9 @@
 /android/.kotlin/
 *.iml
 .idea/
-.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
 *.log
 
 # Node (api/)
@@ -35,6 +37,9 @@ api/playwright-report/
 # misc
 .DS_Store
 *.pem
+
+# Local-only Android tunnel keep-alive (documented scripts stay tracked)
+scripts/keep_android_api_tunnel.sh
 
 # debug
 npm-debug.log*

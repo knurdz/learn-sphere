@@ -1,4 +1,3 @@
-import { fetchTranscript as fetchYouTubeTranscript } from "youtube-transcript";
 import ytdl from "@distube/ytdl-core";
 import { transcribeFile } from "@/lib/providers/groq";
 
@@ -17,26 +16,125 @@ export type YouTubeTranscriptSegment = {
   endSeconds: number | null;
 };
 
+export type YouTubeVideoSource = YouTubeVideoContext & {
+  segments: YouTubeTranscriptSegment[];
+};
+
+export class YouTubeCaptionsMissingError extends Error {
+  readonly code = "YOUTUBE_CAPTIONS_MISSING" as const;
+
+  constructor(
+    message = "This YouTube video has no captions. Generating a quiz from the audio uses extra credits.",
+  ) {
+    super(message);
+    this.name = "YouTubeCaptionsMissingError";
+  }
+}
+
 export function youtubeMaterialFileName(videoId: string) {
   return `youtube-${videoId}.txt`;
 }
 
+const VIDEO_ID_PATTERN = /^[\w-]{11}$/;
+const YOUTUBE_HOSTS = new Set([
+  "youtube.com",
+  "m.youtube.com",
+  "music.youtube.com",
+  "youtube-nocookie.com",
+  "youtu.be",
+]);
+
+const INNERTUBE_API_URL = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false";
+const INNERTUBE_USER_AGENT =
+  "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip";
+const INNERTUBE_CONTEXT = {
+  client: {
+    clientName: "ANDROID",
+    clientVersion: "20.10.38",
+  },
+};
+
+const MAX_WHISPER_BYTES = 24 * 1024 * 1024;
+
+type CaptionTrack = {
+  baseUrl?: string;
+  languageCode?: string;
+  kind?: string;
+  vssId?: string;
+};
+
+type InnerTubePlayerResponse = {
+  playabilityStatus?: {
+    status?: string;
+    reason?: string;
+  };
+  videoDetails?: {
+    title?: string;
+    author?: string;
+    lengthSeconds?: string;
+    isLiveContent?: boolean;
+  };
+  captions?: {
+    playerCaptionsTracklistRenderer?: {
+      captionTracks?: CaptionTrack[];
+    };
+  };
+  streamingData?: {
+    adaptiveFormats?: DownloadableFormat[];
+    formats?: DownloadableFormat[];
+  };
+};
+
+type DownloadableFormat = {
+  url?: string;
+  itag?: number;
+  mimeType?: string;
+  container?: string;
+  codecs?: string;
+  hasAudio?: boolean;
+  hasVideo?: boolean;
+  contentLength?: string;
+  audioQuality?: string;
+  bitrate?: number;
+};
+
 export function getYouTubeVideoId(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (VIDEO_ID_PATTERN.test(trimmed)) return trimmed;
+
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
   try {
-    const url = new URL(value.trim());
+    const url = new URL(withScheme);
     const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
 
+    if (!YOUTUBE_HOSTS.has(hostname)) return null;
+
     if (hostname === "youtu.be") {
-      return url.pathname.split("/").filter(Boolean)[0] || null;
+      const id = url.pathname.split("/").filter(Boolean)[0] || null;
+      return id && VIDEO_ID_PATTERN.test(id) ? id : null;
     }
-    if (hostname === "youtube.com" || hostname === "m.youtube.com") {
-      if (url.pathname === "/watch") return url.searchParams.get("v");
-      const parts = url.pathname.split("/").filter(Boolean);
-      if (parts[0] === "shorts" || parts[0] === "embed") return parts[1] || null;
+
+    if (url.pathname === "/watch") {
+      const id = url.searchParams.get("v");
+      return id && VIDEO_ID_PATTERN.test(id) ? id : null;
+    }
+
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (
+      parts[0] === "shorts" ||
+      parts[0] === "embed" ||
+      parts[0] === "live" ||
+      parts[0] === "v"
+    ) {
+      const id = parts[1] || null;
+      return id && VIDEO_ID_PATTERN.test(id) ? id : null;
     }
   } catch {
     return null;
   }
+
   return null;
 }
 
@@ -48,77 +146,163 @@ function cleanTranscript(value: string) {
     .slice(0, 7000);
 }
 
-async function fetchTranscript(videoId: string) {
-  const transcriptFromPackage = await fetchTranscriptFromPackage(videoId);
-  if (transcriptFromPackage) return transcriptFromPackage;
+function languagePrefix(code: string | undefined) {
+  return (code || "").toLowerCase().split(/[-_]/)[0];
+}
 
-  const pageResponse = await fetch(
-    `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&hl=en`,
-    { headers: { "User-Agent": "Mozilla/5.0" } },
-  );
-  if (!pageResponse.ok) return "";
+function playabilityErrorMessage(status: string | undefined, reason: string | undefined) {
+  const normalized = (status || "").toUpperCase();
+  if (normalized === "LOGIN_REQUIRED") {
+    return "This YouTube video requires sign-in (age-restricted or members-only) and cannot be used for quizzes.";
+  }
+  if (normalized === "UNPLAYABLE") {
+    return reason?.trim() || "This YouTube video is unplayable and cannot be used for quizzes.";
+  }
+  if (normalized === "ERROR") {
+    return reason?.trim() || "Could not load this YouTube video.";
+  }
+  if (normalized === "LIVE_STREAM_OFFLINE") {
+    return "This live stream is offline and cannot be used for quizzes yet.";
+  }
+  if (normalized && normalized !== "OK") {
+    return reason?.trim() || `This YouTube video cannot be used (${normalized}).`;
+  }
+  return null;
+}
 
-  const page = await pageResponse.text();
-  const captionMatch = page.match(/"captionTracks":(\[[\s\S]*?\])(?:,"audioTracks"|,\"audioTracks\")/);
-  if (!captionMatch) return "";
+async function fetchInnerTubePlayer(videoId: string): Promise<InnerTubePlayerResponse> {
+  const response = await fetch(INNERTUBE_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": INNERTUBE_USER_AGENT,
+    },
+    body: JSON.stringify({
+      context: INNERTUBE_CONTEXT,
+      videoId,
+    }),
+  });
 
-  let tracks: Array<{ baseUrl?: string; languageCode?: string }> = [];
-  try {
-    tracks = JSON.parse(captionMatch[1].replace(/\\u0026/g, "&")) as typeof tracks;
-  } catch {
-    return "";
+  if (!response.ok) {
+    throw new Error("Could not load the YouTube video player data.");
   }
 
-  const track =
-    tracks.find((item) => item.languageCode?.toLowerCase().startsWith("en")) ||
-    tracks[0];
-  if (!track?.baseUrl) return "";
+  return (await response.json()) as InnerTubePlayerResponse;
+}
+
+function chooseCaptionTrack(tracks: CaptionTrack[], preferredLanguage?: string) {
+  if (tracks.length === 0) return null;
+
+  const preferred = languagePrefix(preferredLanguage);
+  if (preferred) {
+    const preferredManual = tracks.find(
+      (track) => languagePrefix(track.languageCode) === preferred && track.kind !== "asr",
+    );
+    if (preferredManual?.baseUrl) return preferredManual;
+
+    const preferredAny = tracks.find(
+      (track) => languagePrefix(track.languageCode) === preferred,
+    );
+    if (preferredAny?.baseUrl) return preferredAny;
+  }
+
+  const englishManual = tracks.find(
+    (track) => languagePrefix(track.languageCode) === "en" && track.kind !== "asr",
+  );
+  if (englishManual?.baseUrl) return englishManual;
+
+  const englishAny = tracks.find((track) => languagePrefix(track.languageCode) === "en");
+  if (englishAny?.baseUrl) return englishAny;
+
+  const asr = tracks.find((track) => track.kind === "asr" && track.baseUrl);
+  if (asr) return asr;
+
+  return tracks.find((track) => track.baseUrl) || null;
+}
+
+function parseJson3CaptionEvents(body: {
+  events?: Array<{
+    tStartMs?: number;
+    dDurationMs?: number;
+    segs?: Array<{ utf8?: string }>;
+  }>;
+}): YouTubeTranscriptSegment[] {
+  const segments: YouTubeTranscriptSegment[] = [];
+
+  for (const event of body.events || []) {
+    const text = (event.segs || [])
+      .map((segment) => segment.utf8 || "")
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!text) continue;
+
+    const startMs = typeof event.tStartMs === "number" ? event.tStartMs : 0;
+    const durationMs = typeof event.dDurationMs === "number" ? event.dDurationMs : null;
+    const startSeconds = startMs / 1000;
+    segments.push({
+      text,
+      startSeconds,
+      endSeconds: durationMs === null ? null : startSeconds + durationMs / 1000,
+    });
+  }
+
+  return segments;
+}
+
+async function fetchCaptionSegmentsFromTrack(
+  track: CaptionTrack,
+): Promise<YouTubeTranscriptSegment[]> {
+  if (!track.baseUrl) return [];
 
   const captionUrl = new URL(track.baseUrl);
   captionUrl.searchParams.set("fmt", "json3");
-  const captionResponse = await fetch(captionUrl);
-  if (!captionResponse.ok) return "";
 
-  const body = (await captionResponse.json().catch(() => null)) as {
-    events?: Array<{ segs?: Array<{ utf8?: string }> }>;
+  const response = await fetch(captionUrl.toString(), {
+    headers: { "User-Agent": INNERTUBE_USER_AGENT },
+  });
+  if (!response.ok) return [];
+
+  const body = (await response.json().catch(() => null)) as {
+    events?: Array<{
+      tStartMs?: number;
+      dDurationMs?: number;
+      segs?: Array<{ utf8?: string }>;
+    }>;
   } | null;
-  return cleanTranscript(
-    (body?.events || [])
-      .flatMap((event) => event.segs || [])
-      .map((segment) => segment.utf8 || "")
-      .join(" "),
-  );
+
+  if (!body) return [];
+  return parseJson3CaptionEvents(body);
 }
 
-async function fetchTranscriptFromPackage(videoId: string) {
-  for (const config of [{ lang: "en" }, undefined] as const) {
-    try {
-      const segments = await fetchYouTubeTranscript(videoId, config);
-      const transcript = cleanTranscript(segments.map((segment) => segment.text).join(" "));
-      if (transcript) return transcript;
-    } catch {
-      // Try the next language/source before reporting that captions are unavailable.
-    }
+export async function fetchCaptionSegments(
+  videoId: string,
+  preferredLanguage?: string,
+  player?: InnerTubePlayerResponse,
+): Promise<YouTubeTranscriptSegment[]> {
+  const data = player ?? (await fetchInnerTubePlayer(videoId));
+  const playabilityMessage = playabilityErrorMessage(
+    data.playabilityStatus?.status,
+    data.playabilityStatus?.reason,
+  );
+  if (playabilityMessage) {
+    throw new Error(playabilityMessage);
   }
 
-  return "";
-}
+  if (data.videoDetails?.isLiveContent && data.videoDetails.lengthSeconds === "0") {
+    throw new Error("Live streams that are still in progress cannot be used for quizzes.");
+  }
 
-type DownloadableFormat = {
-  url?: string;
-  itag?: number;
-  mimeType?: string;
-  container?: string;
-  codecs?: string;
-  hasAudio?: boolean;
-  hasVideo?: boolean;
-  contentLength?: string;
-};
+  const tracks = data.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+  const track = chooseCaptionTrack(tracks, preferredLanguage);
+  if (!track) return [];
+
+  return fetchCaptionSegmentsFromTrack(track);
+}
 
 function mimeTypeFromFormat(format: DownloadableFormat | null) {
   const mime = format?.mimeType?.split(";")[0]?.trim();
   if (mime) {
-    // Progressive video+audio streams are still valid Whisper inputs as mp4/webm.
     if (mime === "video/mp4") return "audio/mp4";
     if (mime === "video/webm") return "audio/webm";
     return mime;
@@ -132,6 +316,37 @@ function mimeTypeFromFormat(format: DownloadableFormat | null) {
 }
 
 function chooseDownloadableAudioFormat(formats: DownloadableFormat[]) {
+  const withAudioUrl = formats.filter((format) => {
+    if (!format.url) return false;
+    if (format.hasAudio === false) return false;
+    const mime = (format.mimeType || "").toLowerCase();
+    if (mime.startsWith("audio/")) return true;
+    if (format.hasAudio) return true;
+    // InnerTube adaptive audio formats often omit hasAudio.
+    return Boolean(format.audioQuality) || /audio\//.test(mime);
+  });
+
+  if (withAudioUrl.length === 0) return null;
+
+  const itag18 = withAudioUrl.find((format) => format.itag === 18);
+  if (itag18) return itag18;
+
+  const audioOnlyWithUrl = withAudioUrl.find((format) => {
+    const mime = (format.mimeType || "").toLowerCase();
+    return mime.startsWith("audio/") || (format.hasAudio && !format.hasVideo);
+  });
+  if (audioOnlyWithUrl) return audioOnlyWithUrl;
+
+  return (
+    [...withAudioUrl].sort(
+      (a, b) =>
+        (Number(a.contentLength) || Number.POSITIVE_INFINITY) -
+        (Number(b.contentLength) || Number.POSITIVE_INFINITY),
+    )[0] || null
+  );
+}
+
+function chooseYtdlAudioFormat(formats: DownloadableFormat[]) {
   try {
     const audioOnly = ytdl.chooseFormat(formats as never, {
       quality: "highestaudio",
@@ -152,38 +367,34 @@ function chooseDownloadableAudioFormat(formats: DownloadableFormat[]) {
     // Fall through to manual selection.
   }
 
-  const withAudioUrl = formats.filter((format) => Boolean(format.url && format.hasAudio));
-  const itag18 = withAudioUrl.find((format) => format.itag === 18);
-  if (itag18) return itag18;
-
-  const audioOnlyWithUrl = withAudioUrl.find((format) => format.hasAudio && !format.hasVideo);
-  if (audioOnlyWithUrl) return audioOnlyWithUrl;
-
-  return (
-    [...withAudioUrl].sort(
-      (a, b) =>
-        (Number(a.contentLength) || Number.POSITIVE_INFINITY) -
-        (Number(b.contentLength) || Number.POSITIVE_INFINITY),
-    )[0] || null
-  );
+  return chooseDownloadableAudioFormat(formats);
 }
 
-async function fetchTranscriptSegmentsFromAudio(
+async function downloadAndTranscribeFormat(
   videoId: string,
+  audioFormat: DownloadableFormat,
 ): Promise<YouTubeTranscriptSegment[]> {
-  const videoUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
-  const info = await ytdl.getInfo(videoUrl);
-  const audioFormat = chooseDownloadableAudioFormat(info.formats as DownloadableFormat[]);
+  if (!audioFormat.url) return [];
 
-  if (!audioFormat?.url) return [];
+  const contentLength = Number(audioFormat.contentLength);
+  if (Number.isFinite(contentLength) && contentLength > MAX_WHISPER_BYTES) {
+    throw new Error(
+      "This video is too long to transcribe without captions. Try a shorter video or one that has captions.",
+    );
+  }
 
   const audioResponse = await fetch(audioFormat.url, {
-    headers: { "User-Agent": "Mozilla/5.0" },
+    headers: { "User-Agent": INNERTUBE_USER_AGENT },
   });
   if (!audioResponse.ok) return [];
 
   const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
   if (audioBuffer.length === 0) return [];
+  if (audioBuffer.length > MAX_WHISPER_BYTES) {
+    throw new Error(
+      "This video is too long to transcribe without captions. Try a shorter video or one that has captions.",
+    );
+  }
 
   const mimeType = mimeTypeFromFormat(audioFormat);
   const extension = mimeType.includes("mp4")
@@ -195,7 +406,6 @@ async function fetchTranscriptSegmentsFromAudio(
     buffer: audioBuffer,
     fileName: `youtube-${videoId}.${extension}`,
     mimeType,
-    language: "en",
   });
 
   return segments
@@ -217,67 +427,77 @@ async function fetchTranscriptSegmentsFromAudio(
     .filter((segment): segment is YouTubeTranscriptSegment => segment !== null);
 }
 
-function packageOffsetToSeconds(value: number) {
-  // youtube-transcript returns srv3 offsets/durations in milliseconds.
-  return value / 1000;
+async function fetchTranscriptSegmentsFromAudio(
+  videoId: string,
+  player?: InnerTubePlayerResponse,
+): Promise<YouTubeTranscriptSegment[]> {
+  const data = player ?? (await fetchInnerTubePlayer(videoId));
+  const innerFormats = [
+    ...(data.streamingData?.adaptiveFormats || []),
+    ...(data.streamingData?.formats || []),
+  ];
+  const innerFormat = chooseDownloadableAudioFormat(innerFormats);
+  if (innerFormat?.url) {
+    try {
+      const segments = await downloadAndTranscribeFormat(videoId, innerFormat);
+      if (segments.length > 0) return segments;
+    } catch (error) {
+      if (error instanceof Error && /too long to transcribe/i.test(error.message)) {
+        throw error;
+      }
+      // Fall through to ytdl.
+    }
+  }
+
+  const videoUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+  const info = await ytdl.getInfo(videoUrl);
+  const audioFormat = chooseYtdlAudioFormat(info.formats as DownloadableFormat[]);
+  if (!audioFormat?.url) return [];
+  return downloadAndTranscribeFormat(videoId, audioFormat);
 }
 
 export async function fetchTranscriptSegments(
   videoId: string,
+  options: {
+    preferredLanguage?: string;
+    allowAudioTranscription?: boolean;
+    player?: InnerTubePlayerResponse;
+  } = {},
 ): Promise<YouTubeTranscriptSegment[]> {
-  for (const config of [{ lang: "en" }, undefined] as const) {
-    try {
-      const segments = await fetchYouTubeTranscript(videoId, config);
-      const timed = segments
-        .map((segment) => {
-          const text = segment.text.replace(/\s+/g, " ").trim();
-          if (!text) return null;
-          const startSeconds =
-            typeof segment.offset === "number" && Number.isFinite(segment.offset)
-              ? packageOffsetToSeconds(segment.offset)
-              : 0;
-          const duration =
-            typeof segment.duration === "number" && Number.isFinite(segment.duration)
-              ? packageOffsetToSeconds(segment.duration)
-              : null;
-          return {
-            text,
-            startSeconds,
-            endSeconds: duration === null ? null : startSeconds + duration,
-          };
-        })
-        .filter((segment): segment is YouTubeTranscriptSegment => segment !== null);
+  const player = options.player ?? (await fetchInnerTubePlayer(videoId));
+  const captionSegments = await fetchCaptionSegments(
+    videoId,
+    options.preferredLanguage,
+    player,
+  );
+  if (captionSegments.length > 0) return captionSegments;
 
-      if (timed.length > 0) return timed;
-    } catch {
-      // Try the next language/source before falling back to plain text.
-    }
-  }
-
-  const transcript = await fetchTranscript(videoId);
-  if (transcript) {
-    return [{ text: transcript, startSeconds: 0, endSeconds: null }];
+  if (!options.allowAudioTranscription) {
+    return [];
   }
 
   try {
-    const segments = await fetchTranscriptSegmentsFromAudio(videoId);
-    if (segments.length > 0) return segments;
-  } catch {
-    // If both captions and audio transcription fail, return empty and let callers surface a message.
+    return await fetchTranscriptSegmentsFromAudio(videoId, player);
+  } catch (error) {
+    if (error instanceof Error && /too long to transcribe/i.test(error.message)) {
+      throw error;
+    }
+    return [];
   }
-
-  return [];
 }
 
-export type YouTubeVideoSource = YouTubeVideoContext & {
-  segments: YouTubeTranscriptSegment[];
-};
+async function resolveVideoMetadata(
+  videoId: string,
+  player?: InnerTubePlayerResponse,
+): Promise<{ title: string; author: string }> {
+  if (player?.videoDetails?.title) {
+    return {
+      title: player.videoDetails.title,
+      author: player.videoDetails.author || "YouTube creator",
+    };
+  }
 
-export async function getYouTubeVideoSource(value: string): Promise<YouTubeVideoSource> {
-  const id = getYouTubeVideoId(value);
-  if (!id) throw new Error("Enter a valid YouTube watch, Shorts, or youtu.be URL.");
-
-  const url = `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
+  const url = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
   const metadataResponse = await fetch(
     `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`,
   );
@@ -285,12 +505,40 @@ export async function getYouTubeVideoSource(value: string): Promise<YouTubeVideo
     title?: string;
     author_name?: string;
   } | null;
-  const segments = await fetchTranscriptSegments(id);
+
+  return {
+    title: metadata?.title || "YouTube lesson",
+    author: metadata?.author_name || "YouTube creator",
+  };
+}
+
+export async function getYouTubeVideoSource(
+  value: string,
+  options: {
+    preferredLanguage?: string;
+    allowAudioTranscription?: boolean;
+  } = {},
+): Promise<YouTubeVideoSource> {
+  const id = getYouTubeVideoId(value);
+  if (!id) throw new Error("Enter a valid YouTube watch, Shorts, or youtu.be URL.");
+
+  const url = `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
+  const player = await fetchInnerTubePlayer(id);
+  const metadata = await resolveVideoMetadata(id, player);
+
+  const segments = await fetchTranscriptSegments(id, {
+    preferredLanguage: options.preferredLanguage,
+    allowAudioTranscription: options.allowAudioTranscription,
+    player,
+  });
   const transcript = cleanTranscript(segments.map((segment) => segment.text).join(" "));
 
   if (!transcript) {
+    if (!options.allowAudioTranscription) {
+      throw new YouTubeCaptionsMissingError();
+    }
     throw new Error(
-      "Study tools need a YouTube video with captions, or a Library video that is already indexed. This URL could not be read from captions or audio transcription.",
+      "This YouTube URL could not be read from captions or audio transcription. Try another public video.",
     );
   }
 
@@ -298,14 +546,21 @@ export async function getYouTubeVideoSource(value: string): Promise<YouTubeVideo
     id,
     url,
     embedUrl: `https://www.youtube.com/embed/${encodeURIComponent(id)}`,
-    title: metadata?.title || "YouTube lesson",
-    author: metadata?.author_name || "YouTube creator",
+    title: metadata.title,
+    author: metadata.author,
     transcript,
     segments,
   };
 }
 
-export async function getYouTubeVideoContext(value: string): Promise<YouTubeVideoContext> {
-  const { segments: _segments, ...context } = await getYouTubeVideoSource(value);
+export async function getYouTubeVideoContext(
+  value: string,
+  preferredLanguage?: string,
+): Promise<YouTubeVideoContext> {
+  // Live tutor auto-allows audio transcription so it does not need a confirmation dialog.
+  const { segments: _segments, ...context } = await getYouTubeVideoSource(value, {
+    preferredLanguage,
+    allowAudioTranscription: true,
+  });
   return context;
 }

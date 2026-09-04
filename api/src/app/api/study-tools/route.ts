@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { generateGroqText } from "@/lib/providers/groq";
+import { generateGroqText, GroqRateLimitError } from "@/lib/providers/groq";
 import {
   artifactTitle,
+  dedupeStudyArtifacts,
   hideQuizAnswers,
   jsonValue,
   parseGeneratedStudyArtifact,
+  sampleChunksEvenly,
   studyToolPrompt,
+  videoQuizGenerationKey,
+  type ClientArtifactPayload,
 } from "@/lib/study-tools";
 import type {
   MaterialChunk,
@@ -15,12 +19,14 @@ import type {
   StudyArtifactKind,
 } from "@/lib/supabase/database";
 import { ensureYouTubeStudySource } from "@/lib/youtube-study-source";
+import { YouTubeCaptionsMissingError } from "@/lib/youtube";
+import { EmbeddingRateLimitError } from "@/lib/providers/gemini-embeddings";
 import { resolveAppLanguage } from "@/lib/app-language";
 import { recordActivityFailOpen, readTimezoneFromRequest } from "@/lib/gamification";
 import { getAuthContext } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const supportedKinds = ["video_quiz", "video_create", "video_engage"] as const;
 
@@ -33,6 +39,8 @@ const requestSchema = z.object({
   ]),
   brief: z.string().trim().max(1500).optional(),
   youtubeUrl: z.string().trim().max(500).optional(),
+  allowAudioTranscription: z.boolean().optional(),
+  replaceExisting: z.boolean().optional(),
 });
 
 type SourceChunk = Pick<
@@ -47,8 +55,14 @@ type SourceChunk = Pick<
   material_name: string;
 };
 
-function sourceContext(chunks: SourceChunk[]) {
+function sourceContext(
+  chunks: SourceChunk[],
+  options: { maxChunks?: number; maxCharsPerChunk?: number } = {},
+) {
+  const maxChunks = options.maxChunks ?? chunks.length;
+  const maxChars = options.maxCharsPerChunk ?? 1100;
   return chunks
+    .slice(0, maxChunks)
     .map((chunk) => {
       const location =
         chunk.page_number !== null
@@ -66,7 +80,7 @@ function sourceContext(chunks: SourceChunk[]) {
         " location=" +
         location +
         "\n" +
-        chunk.content.slice(0, 1100)
+        chunk.content.slice(0, maxChars)
       );
     })
     .join("\n\n");
@@ -133,19 +147,20 @@ export async function GET(request: NextRequest) {
     .eq("study_space_id", studySpaceId)
     .in("item_type", [...supportedKinds]);
 
-  try {
-    return NextResponse.json({
-      artifacts: (artifacts ?? []).map((artifact) =>
-        hideQuizAnswers(artifact as StudyArtifact),
-      ),
-      progress: (progress ?? []) as LearningProgress[],
-    });
-  } catch {
-    return NextResponse.json(
-      { error: "A saved study tool has invalid generated data." },
-      { status: 500 },
-    );
+  const safeArtifacts: Array<StudyArtifact & { payload: ClientArtifactPayload }> = [];
+  for (const artifact of dedupeStudyArtifacts(artifacts ?? [])) {
+    try {
+      safeArtifacts.push(hideQuizAnswers(artifact as StudyArtifact));
+    } catch {
+      // Skip rows that cannot be parsed (e.g. corrupt payloads) instead of
+      // failing the whole Study tools list.
+    }
   }
+
+  return NextResponse.json({
+    artifacts: safeArtifacts,
+    progress: (progress ?? []) as LearningProgress[],
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -171,6 +186,8 @@ export async function POST(request: NextRequest) {
   const languageCode = resolveAppLanguage(request);
   const youtubeUrl = parsedBody.data.youtubeUrl?.trim() ?? "";
   const brief = parsedBody.data.brief?.trim() ?? "";
+  const allowAudioTranscription = parsedBody.data.allowAudioTranscription === true;
+  const replaceExisting = parsedBody.data.replaceExisting === true;
   const { data: space, error: spaceError } = await context.supabase
     .from("study_spaces")
     .select("id,name")
@@ -200,6 +217,10 @@ export async function POST(request: NextRequest) {
         context.user.id,
         studySpaceId,
         youtubeUrl,
+        {
+          preferredLanguage: languageCode,
+          allowAudioTranscription,
+        },
       );
       youtubeVideoTitle = source.videoContext.title;
       materialResult = {
@@ -213,6 +234,15 @@ export async function POST(request: NextRequest) {
         error: null,
       };
     } catch (error) {
+      if (error instanceof YouTubeCaptionsMissingError) {
+        return NextResponse.json(
+          { error: error.message, code: error.code },
+          { status: 409 },
+        );
+      }
+      if (error instanceof EmbeddingRateLimitError) {
+        return NextResponse.json({ error: error.message }, { status: 429 });
+      }
       const message =
         error instanceof Error ? error.message : "Could not load the YouTube video.";
       return NextResponse.json({ error: message }, { status: 400 });
@@ -228,13 +258,85 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Study tools need a YouTube video with captions, or a Library video that is already indexed. Paste a captioned YouTube URL or index a video in Library first.",
+          "Paste a YouTube URL, or index a Library video first.",
       },
       { status: 400 },
     );
   }
 
   const materialIds = materialResult.materials.map((material) => material.id);
+  const boundMaterialId =
+    kind === "video_quiz" || kind === "video_engage" ? materialIds[0] : undefined;
+  const generationKey =
+    kind === "video_quiz" && boundMaterialId
+      ? videoQuizGenerationKey(boundMaterialId)
+      : null;
+
+  let existingQuizId: string | null = null;
+  if (kind === "video_quiz" && generationKey) {
+    const { data: existing, error: existingError } = await context.supabase
+      .from("study_artifacts")
+      .select("id,title")
+      .eq("user_id", context.user.id)
+      .eq("study_space_id", studySpaceId)
+      .eq("generation_key", generationKey)
+      .maybeSingle();
+
+    if (existingError) {
+      return NextResponse.json({ error: existingError.message }, { status: 500 });
+    }
+
+    if (existing && !replaceExisting) {
+      return NextResponse.json(
+        {
+          error: "A quiz already exists for this video. Replace it to generate a new set.",
+          code: "QUIZ_EXISTS",
+          existingArtifactId: existing.id,
+          existingTitle: existing.title,
+        },
+        { status: 409 },
+      );
+    }
+    existingQuizId = existing?.id ?? null;
+
+    // Also catch legacy quizzes that only stored material_id in payload.
+    if (!existingQuizId && boundMaterialId) {
+      const { data: legacyQuizzes, error: legacyError } = await context.supabase
+        .from("study_artifacts")
+        .select("id,title,payload,created_at")
+        .eq("user_id", context.user.id)
+        .eq("study_space_id", studySpaceId)
+        .eq("kind", "video_quiz")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (legacyError) {
+        return NextResponse.json({ error: legacyError.message }, { status: 500 });
+      }
+
+      const legacyMatch = (legacyQuizzes ?? []).find((row) => {
+        const payload =
+          row.payload && typeof row.payload === "object" && !Array.isArray(row.payload)
+            ? (row.payload as Record<string, unknown>)
+            : null;
+        return payload?.material_id === boundMaterialId;
+      });
+
+      if (legacyMatch && !replaceExisting) {
+        return NextResponse.json(
+          {
+            error: "A quiz already exists for this video. Replace it to generate a new set.",
+            code: "QUIZ_EXISTS",
+            existingArtifactId: legacyMatch.id,
+            existingTitle: legacyMatch.title,
+          },
+          { status: 409 },
+        );
+      }
+      existingQuizId = legacyMatch?.id ?? existingQuizId;
+    }
+  }
+
   let chunks: Array<
     Pick<
       MaterialChunk,
@@ -296,13 +398,22 @@ export async function POST(request: NextRequest) {
 
   let payload;
   try {
+    const quizChunks =
+      kind === "video_quiz" ? sampleChunksEvenly(contextChunks, 12) : contextChunks;
+    const contextForPrompt =
+      kind === "video_quiz"
+        ? sourceContext(quizChunks, { maxChunks: 12, maxCharsPerChunk: 550 })
+        : sourceContext(contextChunks);
     const raw = await generateGroqText({
       system:
         "You create source-grounded learning tools for LearnSphere. " +
         (kind === "video_create"
           ? "Follow the user's video brief and use supplied excerpts only when available. "
-          : "Use only the provided excerpts, keep every question answerable from them, ") +
-        "and return valid JSON with no markdown.",
+          : "Use only the provided excerpts, keep every question answerable from them. ") +
+        (kind === "video_quiz"
+          ? "Prefer conceptual understanding over caption trivia. "
+          : "") +
+        "Return valid JSON with no markdown.",
       messages: [
         {
           role: "user",
@@ -310,12 +421,18 @@ export async function POST(request: NextRequest) {
             "STUDY SPACE: " +
             space.name +
             "\n\n" +
-            studyToolPrompt(kind, sourceContext(contextChunks), brief, languageCode),
+            studyToolPrompt(
+              kind,
+              contextForPrompt,
+              brief,
+              languageCode,
+              boundMaterialId,
+            ),
         },
       ],
-      maxTokens: 2800,
+      maxTokens: kind === "video_quiz" ? 2500 : 2800,
     });
-    payload = parseGeneratedStudyArtifact(kind, raw);
+    payload = parseGeneratedStudyArtifact(kind, raw, { materialId: boundMaterialId });
     if (
       (kind === "video_quiz" || kind === "video_engage") &&
       (!("material_id" in payload) || !materialIds.includes(payload.material_id))
@@ -323,6 +440,9 @@ export async function POST(request: NextRequest) {
       throw new Error("The generated video tool selected an invalid material.");
     }
   } catch (error) {
+    if (error instanceof GroqRateLimitError) {
+      return NextResponse.json({ error: error.message }, { status: 429 });
+    }
     const message = error instanceof Error ? error.message : "Generation failed.";
     return NextResponse.json(
       { error: "The study tool could not be generated: " + message },
@@ -330,38 +450,104 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const savedTitle = youtubeVideoTitle
-    ? artifactTitle(kind) + ": " + youtubeVideoTitle.slice(0, 80)
+  const materialLabel =
+    youtubeVideoTitle ??
+    (boundMaterialId ? materialNames.get(boundMaterialId) : null) ??
+    null;
+  const savedTitle = materialLabel
+    ? artifactTitle(kind) + ": " + materialLabel.slice(0, 80)
     : artifactTitle(kind);
 
-  const { data: artifact, error: insertError } = await context.supabase
-    .from("study_artifacts")
-    .insert({
-      user_id: context.user.id,
-      study_space_id: studySpaceId,
-      kind,
-      title: savedTitle,
-      payload: jsonValue(payload),
-    })
-    .select("*")
-    .single();
+  const row = {
+    user_id: context.user.id,
+    study_space_id: studySpaceId,
+    kind,
+    title: savedTitle,
+    payload: jsonValue(payload),
+    material_id: boundMaterialId ?? null,
+    generation_key: generationKey,
+  };
 
-  if (insertError || !artifact) {
-    return NextResponse.json(
-      { error: insertError?.message ?? "The study tool could not be saved." },
-      { status: 500 },
-    );
+  let artifact: StudyArtifact | null = null;
+
+  if (existingQuizId && kind === "video_quiz") {
+    // Remove sibling legacy duplicates for the same video, then update the kept row.
+    if (boundMaterialId) {
+      const { data: siblings } = await context.supabase
+        .from("study_artifacts")
+        .select("id,payload,material_id")
+        .eq("user_id", context.user.id)
+        .eq("study_space_id", studySpaceId)
+        .eq("kind", "video_quiz");
+
+      const duplicateIds = (siblings ?? [])
+        .filter((sibling) => {
+          if (sibling.id === existingQuizId) return false;
+          if (sibling.material_id === boundMaterialId) return true;
+          const siblingPayload =
+            sibling.payload &&
+            typeof sibling.payload === "object" &&
+            !Array.isArray(sibling.payload)
+              ? (sibling.payload as Record<string, unknown>)
+              : null;
+          return siblingPayload?.material_id === boundMaterialId;
+        })
+        .map((sibling) => sibling.id);
+
+      if (duplicateIds.length > 0) {
+        await context.supabase.from("study_artifacts").delete().in("id", duplicateIds);
+      }
+    }
+
+    const { data: updated, error: updateError } = await context.supabase
+      .from("study_artifacts")
+      .update(row)
+      .eq("id", existingQuizId)
+      .eq("user_id", context.user.id)
+      .select("*")
+      .single();
+
+    if (updateError || !updated) {
+      return NextResponse.json(
+        { error: updateError?.message ?? "The study tool could not be updated." },
+        { status: 500 },
+      );
+    }
+    artifact = updated as StudyArtifact;
+  } else {
+    const { data: inserted, error: insertError } = await context.supabase
+      .from("study_artifacts")
+      .insert(row)
+      .select("*")
+      .single();
+
+    if (insertError || !inserted) {
+      if (insertError?.code === "23505" && kind === "video_quiz") {
+        return NextResponse.json(
+          {
+            error: "A quiz already exists for this video. Replace it to generate a new set.",
+            code: "QUIZ_EXISTS",
+          },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json(
+        { error: insertError?.message ?? "The study tool could not be saved." },
+        { status: 500 },
+      );
+    }
+    artifact = inserted as StudyArtifact;
   }
 
   await recordActivityFailOpen(context.supabase, {
     userId: context.user.id,
     eventType: "study_tool_generated",
     timeZone: readTimezoneFromRequest(request),
-    idempotencyKey: `study_tool_generated:${artifact.id}`,
+    idempotencyKey: `study_tool_generated:${artifact.id}:${Date.now()}`,
     metadata: { artifactId: artifact.id, kind },
   });
 
   return NextResponse.json({
-    artifact: hideQuizAnswers(artifact as StudyArtifact),
+    artifact: hideQuizAnswers(artifact),
   });
 }

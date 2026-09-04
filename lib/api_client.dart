@@ -99,24 +99,21 @@ class BridgeApi {
 
   String _connectionErrorMessage() {
     final base = _dio.options.baseUrl;
-    final buffer = StringBuffer(
-      'Cannot reach the LearnSphere API at $base. Start it on your computer: cd api && pnpm dev',
-    );
-    if (!kIsWeb && (base.contains('127.0.0.1') || base.contains('localhost'))) {
-      if (Platform.isAndroid) {
-        buffer.write(
-          '. On a physical Android phone over USB, also run: adb reverse tcp:3000 tcp:3000',
-        );
-      } else {
-        buffer.write(
-          '. On a physical device, set API_BASE_URL to your computer\'s LAN IP (not 127.0.0.1) in .env.local',
-        );
-      }
-    } else if (kIsWeb && (base.contains('127.0.0.1') || base.contains('localhost'))) {
-      buffer.write('. Start the API with: cd api && pnpm dev');
+    final isLoopback = base.contains('127.0.0.1') || base.contains('localhost');
+
+    if (!kIsWeb && isLoopback && Platform.isAndroid) {
+      return 'Cannot reach the local API. On your computer run: '
+          'cd api && pnpm dev — then ./scripts/ensure_android_api_tunnel.sh '
+          '(or use Run → LearnSphere (Android device)).';
     }
-    buffer.write('.');
-    return buffer.toString();
+    if (!kIsWeb && isLoopback) {
+      return 'Cannot reach the local API. Start it with: cd api && pnpm dev, '
+          'and set API_BASE_URL to your computer\'s LAN IP in .env.local.';
+    }
+    if (kIsWeb && isLoopback) {
+      return 'Cannot reach the local API. Start it with: cd api && pnpm dev.';
+    }
+    return 'Cannot reach LearnSphere right now. Check your connection and try again.';
   }
 
   Future<T> _handle<T>(Future<dio.Response<dynamic>> request, T Function(dynamic) decode) async {
@@ -126,8 +123,11 @@ class BridgeApi {
     } on dio.DioException catch (error) {
       final data = error.response?.data;
       String message;
+      String? code;
       if (data is Map && data['error'] != null) {
         message = '${data['error']}';
+        final rawCode = data['code'];
+        if (rawCode != null) code = '$rawCode';
         if (error.response?.statusCode == 401) {
           message =
               '$message Sign out and sign in again. If this persists, the release APK and server must use the same Supabase project.';
@@ -144,7 +144,7 @@ class BridgeApi {
       } else {
         message = error.message ?? 'Network request failed.';
       }
-      throw BridgeException(message, error.response?.statusCode);
+      throw BridgeException(message, error.response?.statusCode, code);
     }
   }
 
@@ -330,17 +330,41 @@ class BridgeApi {
     required String kind,
     String? brief,
     String? youtubeUrl,
+    bool allowAudioTranscription = false,
+    bool replaceExisting = false,
   }) async {
     final result = await _handle(
-      _post('/api/study-tools', data: {
-        'studySpaceId': studySpaceId,
-        'kind': kind,
-        if (brief != null && brief.trim().isNotEmpty) 'brief': brief.trim(),
-        if (youtubeUrl != null && youtubeUrl.trim().isNotEmpty) 'youtubeUrl': youtubeUrl.trim(),
-      }),
+      _dio.post(
+        '/api/study-tools',
+        data: {
+          'studySpaceId': studySpaceId,
+          'kind': kind,
+          if (brief != null && brief.trim().isNotEmpty) 'brief': brief.trim(),
+          if (youtubeUrl != null && youtubeUrl.trim().isNotEmpty) 'youtubeUrl': youtubeUrl.trim(),
+          if (allowAudioTranscription) 'allowAudioTranscription': true,
+          if (replaceExisting) 'replaceExisting': true,
+        },
+        options: _options().copyWith(
+          receiveTimeout: const Duration(seconds: 120),
+        ),
+      ),
       (data) => jsonMap(data),
     );
     return StudyArtifact.fromMap(jsonMap(result['artifact']));
+  }
+
+  Future<Map<String, dynamic>> gradeVideoQuizQuestion(
+    String artifactId, {
+    required String questionId,
+    required int answer,
+  }) {
+    return _handle(
+      _post('/api/study-tools/$artifactId/grade', data: {
+        'questionId': questionId,
+        'answer': answer,
+      }),
+      (data) => jsonMap(data),
+    );
   }
 
   Future<Map<String, dynamic>> submitVideoQuiz(String artifactId, Map<String, int> answers) {
@@ -424,10 +448,15 @@ class BridgeApi {
 }
 
 class BridgeException implements Exception {
-  const BridgeException(this.message, [this.statusCode]);
+  const BridgeException(this.message, [this.statusCode, this.code]);
 
   final String message;
   final int? statusCode;
+  final String? code;
+
+  bool get isYouTubeCaptionsMissing => code == 'YOUTUBE_CAPTIONS_MISSING';
+
+  bool get isQuizExists => code == 'QUIZ_EXISTS';
 
   @override
   String toString() => message;

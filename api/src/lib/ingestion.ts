@@ -3,7 +3,7 @@ import { PDFParse } from "pdf-parse";
 import { getData as getPdfWorkerData } from "pdf-parse/worker";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Material } from "@/lib/supabase/database";
-import { embedTexts } from "@/lib/providers/gemini-embeddings";
+import { embedTextsInBatches } from "@/lib/providers/gemini-embeddings";
 import { transcribeFile } from "@/lib/providers/groq";
 
 PDFParse.setWorker(getPdfWorkerData());
@@ -169,13 +169,15 @@ export async function ingestMaterial(
     throw new Error(deleteError.message);
   }
 
+  const embeddings = await embedTextsInBatches(chunks.map((chunk) => chunk.text));
+
+  if (embeddings.length !== chunks.length) {
+    throw new Error("Embedding provider returned an incomplete batch.");
+  }
+
   for (let offset = 0; offset < chunks.length; offset += 32) {
     const batch = chunks.slice(offset, offset + 32);
-    const embeddings = await embedTexts(batch.map((chunk) => chunk.text));
-
-    if (embeddings.length !== batch.length) {
-      throw new Error("Embedding provider returned an incomplete batch.");
-    }
+    const embeddingBatch = embeddings.slice(offset, offset + 32);
 
     const { error: insertError } = await supabase.from("material_chunks").insert(
       batch.map((chunk, index) => ({
@@ -187,7 +189,7 @@ export async function ingestMaterial(
         page_number: chunk.pageNumber,
         start_seconds: chunk.startSeconds,
         end_seconds: chunk.endSeconds,
-        embedding: embeddings[index],
+        embedding: embeddingBatch[index],
       })),
     );
 
