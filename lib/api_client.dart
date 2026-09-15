@@ -1,7 +1,7 @@
 import 'dart:io' show Platform;
 
 import 'package:dio/dio.dart' as dio;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -140,6 +140,11 @@ class BridgeApi {
             'API server error (500). Stop other dev servers, then run: cd api && rm -rf .next && pnpm dev';
       } else if (error.type == dio.DioExceptionType.connectionError ||
           error.type == dio.DioExceptionType.connectionTimeout) {
+        debugPrint(
+          'BridgeApi connection failure: type=${error.type} '
+          'base=${_dio.options.baseUrl} path=${error.requestOptions.path} '
+          'message=${error.message}',
+        );
         message = _connectionErrorMessage();
       } else {
         message = error.message ?? 'Network request failed.';
@@ -177,6 +182,10 @@ class BridgeApi {
 
   Future<void> deleteMaterial(String materialId) async {
     await _handle(_delete('/api/materials/$materialId'), (_) {});
+  }
+
+  Future<void> deleteStudyTool(String artifactId) async {
+    await _handle(_delete('/api/study-tools/$artifactId'), (_) {});
   }
 
   Future<Map<String, dynamic>> generateLearning({

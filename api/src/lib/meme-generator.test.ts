@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   fallbackCaptions,
+  fallbackQuiz,
   matchMemeTemplate,
   memeTemplateCandidates,
   renderMemeSvg,
@@ -115,5 +116,11 @@ describe("meme generation contracts", () => {
     const captions = fallbackCaptions(config.drake, atom);
     expect(Object.keys(captions)).toEqual(["reject", "prefer"]);
     expect(validateMemeCaptions({ template: config.drake, captions })).toBeNull();
+  });
+
+  it("shuffles fallback quiz options so the correct answer is not stuck at index 0", () => {
+    const quiz = fallbackQuiz(atom, () => 0);
+    expect(quiz.options[quiz.correct_index]).toBe(atom.tension.twist);
+    expect(quiz.correct_index).not.toBe(0);
   });
 });

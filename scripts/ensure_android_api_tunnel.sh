@@ -5,12 +5,34 @@ set -euo pipefail
 
 PORT="${API_PORT:-3000}"
 
-if ! command -v adb >/dev/null 2>&1; then
+resolve_adb() {
+  if command -v adb >/dev/null 2>&1; then
+    command -v adb
+    return 0
+  fi
+  local candidates=(
+    "${ANDROID_HOME:-}/platform-tools/adb"
+    "${ANDROID_SDK_ROOT:-}/platform-tools/adb"
+    "${HOME}/Library/Android/sdk/platform-tools/adb"
+    "${HOME}/Android/Sdk/platform-tools/adb"
+  )
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+ADB="$(resolve_adb || true)"
+if [[ -z "${ADB}" ]]; then
   echo "adb not found. Install Android platform-tools, then re-run." >&2
   exit 1
 fi
 
-devices="$(adb devices | awk 'NR>1 && $2=="device" { print $1 }')"
+devices="$("$ADB" devices | awk 'NR>1 && $2=="device" { print $1 }')"
 if [[ -z "$devices" ]]; then
   echo "No authorized Android device. Plug in USB, enable USB debugging, accept the prompt, then run: adb devices" >&2
   exit 1
@@ -31,5 +53,5 @@ if [[ -z "$target" ]]; then
   target="$(printf '%s\n' "$devices" | head -n 1)"
 fi
 
-adb -s "$target" reverse "tcp:${PORT}" "tcp:${PORT}" >/dev/null
+"$ADB" -s "$target" reverse "tcp:${PORT}" "tcp:${PORT}" >/dev/null
 echo "API tunnel ready: device $target → 127.0.0.1:${PORT}"

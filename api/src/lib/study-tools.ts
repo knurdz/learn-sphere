@@ -130,10 +130,55 @@ function parseGeneratedPayload(kind: StudyArtifactKind, value: unknown): Artifac
   return generatedSchemaForKind[kind].parse(value);
 }
 
+export type QuizOptionRandomSource = () => number;
+
+/** Models often put the correct answer first; permute options and keep correct_index in sync. */
+export function randomizeQuizQuestionOptions<
+  T extends { options: string[]; correct_index: number },
+>(question: T, rng: QuizOptionRandomSource = Math.random): T {
+  const options = [...question.options];
+  if (options.length < 2) return question;
+
+  let correctIndex = question.correct_index;
+  if (correctIndex < 0 || correctIndex >= options.length) {
+    correctIndex = 0;
+  }
+
+  for (let i = options.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1));
+    const tmp = options[i]!;
+    options[i] = options[j]!;
+    options[j] = tmp;
+    if (correctIndex === i) correctIndex = j;
+    else if (correctIndex === j) correctIndex = i;
+  }
+
+  return { ...question, options, correct_index: correctIndex };
+}
+
+/** True when every question in a multi-question quiz marks option 0 as correct. */
+export function quizAnswerKeyIsBiased(
+  questions: ReadonlyArray<{ correct_index: number }>,
+): boolean {
+  return questions.length >= 2 && questions.every((question) => question.correct_index === 0);
+}
+
+export function randomizeVideoQuizPayload(
+  payload: VideoQuizPayload,
+  rng: QuizOptionRandomSource = Math.random,
+): VideoQuizPayload {
+  return {
+    ...payload,
+    questions: payload.questions.map((question) =>
+      randomizeQuizQuestionOptions(question, rng),
+    ),
+  };
+}
+
 export function parseGeneratedStudyArtifact(
   kind: StudyArtifactKind,
   raw: string,
-  options: { materialId?: string } = {},
+  options: { materialId?: string; rng?: QuizOptionRandomSource } = {},
 ): ArtifactPayload {
   const candidate = raw
     .replace(/^\x60\x60\x60(?:json)?/i, "")
@@ -153,8 +198,16 @@ export function parseGeneratedStudyArtifact(
     return value;
   };
 
+  const finalize = (value: unknown): ArtifactPayload => {
+    const parsed = parseGeneratedPayload(kind, withMaterialId(value));
+    if (kind === "video_quiz" && "questions" in parsed) {
+      return randomizeVideoQuizPayload(parsed, options.rng);
+    }
+    return parsed;
+  };
+
   try {
-    return parseGeneratedPayload(kind, withMaterialId(JSON.parse(candidate)));
+    return finalize(JSON.parse(candidate));
   } catch (firstError) {
     // Some providers still wrap valid JSON in a short explanation. Only
     // remove surrounding text; schema validation remains authoritative.
@@ -162,10 +215,7 @@ export function parseGeneratedStudyArtifact(
     const end = candidate.lastIndexOf("}");
     if (start >= 0 && end > start) {
       try {
-        return parseGeneratedPayload(
-          kind,
-          withMaterialId(JSON.parse(candidate.slice(start, end + 1))),
-        );
+        return finalize(JSON.parse(candidate.slice(start, end + 1)));
       } catch {
         // Preserve the original parse error for a useful failure message.
       }
@@ -234,11 +284,12 @@ export function studyToolPrompt(
     video_quiz:
       'Return JSON with {"material_id":"' +
       (materialId || "video-material-uuid") +
-      '","questions":[{"id":"q1","prompt":"...","options":["...","...","...","..."],"correct_index":0,"explanation":"...","source_ids":["chunk-id"],"timestamp_seconds":0}]}.' +
+      '","questions":[{"id":"q1","prompt":"...","options":["...","...","...","..."],"correct_index":2,"explanation":"...","source_ids":["chunk-id"],"timestamp_seconds":0}]}.' +
       materialIdRule +
       " Create exactly 5 education-oriented multiple-choice questions." +
       " Each question must name or clearly target a concept or skill from the excerpts and ask why/how/compare/apply — not what the caption literally said." +
       " Each question must have exactly 4 plausible options; wrong options should reflect common misconceptions, not nonsense or near-identical wording." +
+      " Spread correct_index across 0–3; do not put the correct option first for every question." +
       " Each explanation must teach the idea in 1–2 clear sentences (especially useful when the learner is wrong)." +
       " Do NOT ask trivia about whether the viewer watched the video, exact wording, speaker names, channel branding, or timestamps as the learning goal." +
       " Cover different parts of the lesson; use timestamps only as optional anchors.",

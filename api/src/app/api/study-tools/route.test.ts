@@ -40,7 +40,7 @@ function chain(
   terminal: "maybeSingle" | "single" | "limit" = "maybeSingle",
 ) {
   const builder: Record<string, ReturnType<typeof vi.fn>> = {};
-  for (const method of ["select", "eq", "in", "order", "limit", "insert"]) {
+  for (const method of ["select", "eq", "in", "order", "limit", "insert", "update", "delete"]) {
     builder[method] = vi.fn(() => builder);
   }
   builder[terminal] = vi.fn(async () => result);

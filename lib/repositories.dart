@@ -318,6 +318,8 @@ class StudyRepository {
 
   Future<List<StudyArtifact>> studyTools(String studySpaceId) => bridge.fetchStudyTools(studySpaceId);
 
+  Future<void> deleteStudyTool(String artifactId) => bridge.deleteStudyTool(artifactId);
+
   Future<StudyArtifact> generateStudyTool(
     String studySpaceId,
     String kind, {

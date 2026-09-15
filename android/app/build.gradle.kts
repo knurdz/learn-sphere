@@ -71,6 +71,31 @@ flutter {
 }
 
 afterEvaluate {
+    // flutter run uses assembleDebug (not installDebug). Set up adb reverse so
+    // API_BASE_URL=http://127.0.0.1:3000 works on a USB phone without a wrapper script.
+    tasks.named("assembleDebug").configure {
+        doLast {
+            val tunnel =
+                rootProject.projectDir.parentFile.resolve("scripts/ensure_android_api_tunnel.sh")
+            if (!tunnel.isFile) return@doLast
+            try {
+                val result =
+                    exec {
+                        commandLine(tunnel.absolutePath)
+                        isIgnoreExitValue = true
+                    }
+                if (result.exitValue != 0) {
+                    logger.lifecycle(
+                        "Android API tunnel skipped (no device or adb unavailable). " +
+                            "Run ./scripts/ensure_android_api_tunnel.sh after connecting a phone.",
+                    )
+                }
+            } catch (error: Exception) {
+                logger.lifecycle("Android API tunnel skipped: ${error.message}")
+            }
+        }
+    }
+
     tasks.named("assembleRelease").configure {
         doLast {
             val versionName = android.defaultConfig.versionName ?: "unknown"

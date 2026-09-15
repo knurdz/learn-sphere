@@ -8,12 +8,15 @@ import {
   jsonValue,
   materialIdFromStudyArtifact,
   parseGeneratedStudyArtifact,
+  quizAnswerKeyIsBiased,
+  randomizeVideoQuizPayload,
   sampleChunksEvenly,
   sourceVideoFromStoragePath,
   studyToolPrompt,
   videoQuizGenerationKey,
   type ClientArtifactPayload,
   type StudySourceVideo,
+  type VideoQuizPayload,
 } from "@/lib/study-tools";
 import type {
   MaterialChunk,
@@ -174,8 +177,32 @@ export async function GET(request: NextRequest) {
 
   for (const artifact of deduped) {
     try {
-      const client = hideQuizAnswers(artifact as StudyArtifact);
-      const materialId = materialIdFromStudyArtifact(artifact as StudyArtifact);
+      let working = artifact as StudyArtifact;
+      if (working.kind === "video_quiz") {
+        const payload = working.payload as VideoQuizPayload;
+        if (
+          payload &&
+          typeof payload === "object" &&
+          Array.isArray(payload.questions) &&
+          quizAnswerKeyIsBiased(payload.questions)
+        ) {
+          const shuffled = randomizeVideoQuizPayload(payload);
+          try {
+            const { error: repairError } = await context.supabase
+              .from("study_artifacts")
+              .update({ payload: jsonValue(shuffled) })
+              .eq("id", working.id)
+              .eq("user_id", context.user.id);
+            if (!repairError) {
+              working = { ...working, payload: shuffled };
+            }
+          } catch {
+            // Keep the stored payload if repair cannot run (e.g. tests / transient DB errors).
+          }
+        }
+      }
+      const client = hideQuizAnswers(working);
+      const materialId = materialIdFromStudyArtifact(working);
       const sourceVideo = materialId
         ? sourceVideoFromStoragePath(storageByMaterialId.get(materialId))
         : null;
