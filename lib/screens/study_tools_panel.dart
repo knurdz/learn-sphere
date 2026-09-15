@@ -76,6 +76,53 @@ class _StudyToolsPanelState extends ConsumerState<StudyToolsPanel> {
     }
   }
 
+  Future<bool> _confirmDeleteTool(StudyArtifact artifact) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Delete study tool?'),
+        content: Text(
+          'Delete "${artifact.title}"? You can generate it again from a YouTube URL or Library material.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<void> _deleteTool(StudyArtifact artifact) async {
+    final confirmed = await _confirmDeleteTool(artifact);
+    if (!confirmed) return;
+    if (!mounted) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await repository.deleteStudyTool(artifact.id);
+      await _loadTools();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Study tool deleted.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _generate({
     bool allowAudioTranscription = false,
     bool replaceExisting = false,
@@ -351,6 +398,11 @@ class _StudyToolsPanelState extends ConsumerState<StudyToolsPanel> {
                   ),
                 ],
               ),
+            ),
+            IconButton(
+              onPressed: _busy ? null : () => _deleteTool(artifact),
+              icon: const Icon(Icons.delete_outline_rounded),
+              tooltip: 'Delete tool',
             ),
             IconButton(
               onPressed: () => _openArtifact(artifact),

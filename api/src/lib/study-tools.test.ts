@@ -6,6 +6,8 @@ import {
   hideQuizAnswers,
   parseGeneratedStudyArtifact,
   parseStudyArtifactPayload,
+  quizAnswerKeyIsBiased,
+  randomizeQuizQuestionOptions,
   sampleChunksEvenly,
   sourceVideoFromStoragePath,
   studyToolPrompt,
@@ -14,6 +16,9 @@ import {
   type VideoEngagePayload,
   type VideoQuizPayload,
 } from "./study-tools";
+
+/** Fisher–Yates identity: always pick j === i so option order is unchanged. */
+const keepOrderRng = () => 0.999;
 
 function fiveQuizQuestions() {
   return Array.from({ length: 5 }, (_, index) => ({
@@ -88,7 +93,7 @@ describe("study tool payloads", () => {
         material_id: "video-material-uuid",
         questions: fiveQuizQuestions(),
       }),
-      { materialId },
+      { materialId, rng: keepOrderRng },
     ) as VideoQuizPayload;
 
     expect(payload.material_id).toBe(materialId);
@@ -115,7 +120,55 @@ describe("study tool payloads", () => {
     expect(prompt).toMatch(/exactly 5 education-oriented/i);
     expect(prompt).toMatch(/why\/how\/compare\/apply/i);
     expect(prompt).toMatch(/common misconceptions/i);
+    expect(prompt).toMatch(/Spread correct_index across 0–3/i);
     expect(prompt).toMatch(/Do NOT ask trivia/i);
+  });
+
+  it("shuffles quiz options and keeps correct_index pointing at the same text", () => {
+    const question = {
+      id: "q1",
+      prompt: "Pick the right idea",
+      options: ["Correct", "Wrong A", "Wrong B", "Wrong C"],
+      correct_index: 0,
+      explanation: "Correct is right.",
+      source_ids: ["44444444-4444-4444-8444-444444444444"],
+      timestamp_seconds: 0,
+    };
+    // Always pick j === 0 so the last option swaps with the first each pass.
+    const swapWithFirst = () => 0;
+    const shuffled = randomizeQuizQuestionOptions(question, swapWithFirst);
+    expect(shuffled.options[shuffled.correct_index]).toBe("Correct");
+    expect(shuffled.options).not.toEqual(question.options);
+    expect(shuffled.correct_index).not.toBe(0);
+  });
+
+  it("detects answer keys that always use option 0", () => {
+    expect(quizAnswerKeyIsBiased(fiveQuizQuestions())).toBe(true);
+    expect(
+      quizAnswerKeyIsBiased([
+        { correct_index: 0 },
+        { correct_index: 2 },
+        { correct_index: 0 },
+      ]),
+    ).toBe(false);
+    expect(quizAnswerKeyIsBiased([{ correct_index: 0 }])).toBe(false);
+  });
+
+  it("randomizes video quiz options when parsing generated JSON", () => {
+    const materialId = "11111111-1111-4111-8111-111111111111";
+    const payload = parseGeneratedStudyArtifact(
+      "video_quiz",
+      JSON.stringify({
+        material_id: materialId,
+        questions: fiveQuizQuestions(),
+      }),
+      { rng: () => 0 },
+    ) as VideoQuizPayload;
+
+    expect(payload.questions.every((question) => question.correct_index === 0)).toBe(false);
+    for (const question of payload.questions) {
+      expect(question.options[question.correct_index]).toBe("Option A");
+    }
   });
 
   it("samples chunks evenly across the timeline", () => {

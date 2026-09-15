@@ -10,6 +10,7 @@ import {
 import { generateGroqText } from "@/lib/providers/groq";
 import type { AppLanguageCode } from "@/lib/app-language";
 import { languageGenerationDirective } from "@/lib/app-language";
+import { randomizeQuizQuestionOptions } from "@/lib/study-tools";
 import type { LearningFeedKind } from "@/lib/supabase/database";
 
 export const emotionalShapes = [
@@ -123,12 +124,12 @@ const quizResponseSchema = z
   })
   .transform((value) => {
     const options = normalizeQuizOptions(value.options);
-    return {
+    return randomizeQuizQuestionOptions({
       question: value.question,
       options,
       correct_index: Math.min(value.correct_index, options.length - 1),
       explanation: value.explanation,
-    };
+    });
   });
 
 const trueFalseResponseSchema = z.object({
@@ -478,19 +479,25 @@ async function createMeme(
   } satisfies GeneratedLearningItem;
 }
 
-function fallbackQuiz(atom: GeneratedLearningAtom) {
+export function fallbackQuiz(
+  atom: GeneratedLearningAtom,
+  rng: () => number = Math.random,
+) {
   const options = [
     atom.tension.twist,
     atom.tension.setup,
     atom.concept,
     "This idea is not covered in the material",
   ].map((option) => option.trim().slice(0, 180));
-  return {
-    question: `Which statement best captures “${atom.concept}”?`,
-    options: normalizeQuizOptions(options),
-    correct_index: 0,
-    explanation: atom.tension.twist,
-  };
+  return randomizeQuizQuestionOptions(
+    {
+      question: `Which statement best captures “${atom.concept}”?`,
+      options: normalizeQuizOptions(options),
+      correct_index: 0,
+      explanation: atom.tension.twist,
+    },
+    rng,
+  );
 }
 
 function createFlashcard(atom: GeneratedLearningAtom, atomIndex: number) {
@@ -673,7 +680,7 @@ export async function generateLearningPack(input: {
             system:
               "Create one accurate four-option multiple-choice study question. Return only JSON. " +
               langDirective,
-            prompt: `${contextFor(input.sourceText, atom)}\n\nReturn {"question":"...","options":["...","...","...","..."],"correct_index":0,"explanation":"..."}.`,
+            prompt: `${contextFor(input.sourceText, atom)}\n\nReturn {"question":"...","options":["...","...","...","..."],"correct_index":2,"explanation":"..."}. Put the correct option at a varied index (0–3), not always first.`,
             schema: quizResponseSchema,
             maxTokens: 900,
             temperature: 0.5,
