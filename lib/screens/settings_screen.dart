@@ -101,6 +101,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Sign out?'),
         content: const Text('Are you sure you want to sign out of your account?'),
         actions: [
@@ -155,7 +156,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           children: [
           Padding(
             padding: const EdgeInsets.only(left: 8, bottom: 8),
-            child: Text('ACCOUNT', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: theme.colorScheme.primary, letterSpacing: 1.2)),
+            child: Text('ACCOUNT', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: theme.colorScheme.secondary, letterSpacing: 1.2)),
           ),
           Card(
             shape: RoundedRectangleBorder(
@@ -248,6 +249,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                   final confirmed = await showDialog<bool>(
                                     context: context,
                                     builder: (dialogContext) => AlertDialog(
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                                       title: const Text('Use this avatar?'),
                                       content: Column(
                                         mainAxisSize: MainAxisSize.min,
@@ -431,7 +433,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 32),
           Padding(
             padding: const EdgeInsets.only(left: 8, bottom: 8),
-            child: Text('APPEARANCE', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: theme.colorScheme.primary, letterSpacing: 1.2)),
+            child: Text('APPEARANCE', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: theme.colorScheme.secondary, letterSpacing: 1.2)),
           ),
           Card(
             shape: RoundedRectangleBorder(
@@ -485,8 +487,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     child: Wrap(
                       spacing: 12,
                       children: [
+                        _ColorOption(color: 0xFF115DE8, selected: settings.colorTheme == 0xFF115DE8),
                         _ColorOption(color: 0xFF059669, selected: settings.colorTheme == 0xFF059669),
-                        _ColorOption(color: 0xFF2563EB, selected: settings.colorTheme == 0xFF2563EB),
                         _ColorOption(color: 0xFF7C3AED, selected: settings.colorTheme == 0xFF7C3AED),
                         _ColorOption(color: 0xFFDB2777, selected: settings.colorTheme == 0xFFDB2777),
                         _ColorOption(color: 0xFFEA580C, selected: settings.colorTheme == 0xFFEA580C),
@@ -547,7 +549,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 32),
           Padding(
             padding: const EdgeInsets.only(left: 8, bottom: 8),
-            child: Text('ABOUT', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: theme.colorScheme.primary, letterSpacing: 1.2)),
+            child: Text('ABOUT', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: theme.colorScheme.secondary, letterSpacing: 1.2)),
           ),
           Card(
             shape: RoundedRectangleBorder(

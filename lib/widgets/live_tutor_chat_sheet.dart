@@ -419,7 +419,7 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
                                   height: 58,
                                   decoration: BoxDecoration(
                                     color: theme.colorScheme.primaryContainer,
-                                    borderRadius: BorderRadius.circular(18),
+                                    borderRadius: BorderRadius.circular(16),
                                   ),
                                   child: Icon(Icons.chat_bubble_outline, color: primary),
                                 ),
@@ -433,7 +433,7 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
                                 Text(
                                   'Answers include citations from your study space.',
                                   textAlign: TextAlign.center,
-                                  style: theme.textTheme.bodyMedium?.copyWith(color: Colors.blueGrey),
+                                  style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
                                 ),
                               ],
                             ),
@@ -494,7 +494,18 @@ class _LiveTutorChatSheetState extends ConsumerState<LiveTutorChatSheet> {
                           maxLines: 4,
                           enabled: !_busy,
                           onSubmitted: (_) => _ask(),
-                          decoration: const InputDecoration(hintText: 'Ask about your materials…'),
+                          decoration: InputDecoration(
+                            hintText: 'Ask about your materials…',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: const BorderSide(color: Color(0xFFEBEBEB), width: 0.5),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -557,23 +568,39 @@ class TutorMessageBubble extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: user ? const Color(0xFF0C1222) : const Color(0xFFF1F5F9),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              user ? 'You' : 'Tutor',
-              style: TextStyle(
-                color: user ? Colors.white60 : Colors.blueGrey,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  user ? 'You' : 'Live AI',
+                  style: TextStyle(
+                    color: user ? Colors.white60 : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (!user) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text('AI', style: TextStyle(color: Color(0xFFF59E0B), fontSize: 9, fontWeight: FontWeight.w800)),
+                  ),
+                ],
+              ],
             ),
             const SizedBox(height: 5),
             Text(
               message.content,
-              style: TextStyle(color: user ? Colors.white : const Color(0xFF334155), height: 1.45),
+              style: TextStyle(color: user ? Colors.white : const Color(0xFF2A2A2A), height: 1.45),
             ),
             if (!user && message.citations.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -598,14 +625,23 @@ class TutorMessageBubble extends StatelessWidget {
                   children: message.citations
                       .map(
                         (citation) => Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.72),
-                            borderRadius: BorderRadius.circular(999),
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFEBEBEB), width: 0.5),
+                            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))],
                           ),
-                          child: Text(
-                            citation.label,
-                            style: const TextStyle(fontSize: 11, color: Color(0xFF334155)),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.format_quote, size: 12, color: Color(0xFF0F172A)),
+                              const SizedBox(width: 4),
+                              Text(
+                                citation.label,
+                                style: const TextStyle(fontSize: 11, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                              ),
+                            ],
                           ),
                         ),
                       )

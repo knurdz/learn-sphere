@@ -1,190 +1,219 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import '../theme.dart';
-import 'coach/coach_character.dart';
+import 'learnsphere_logo.dart';
 
-/// Full-screen animated splash shown while the app initializes.
+/// Full-screen splash. Same logo + wordmark as before, timed like a Netflix bumper.
 class LearnSphereLoadingSplash extends StatefulWidget {
-  const LearnSphereLoadingSplash({super.key});
+  const LearnSphereLoadingSplash({
+    super.key,
+    this.seedColor = const Color(0xFF115DE8),
+  });
+
+  final Color seedColor;
 
   @override
   State<LearnSphereLoadingSplash> createState() => _LearnSphereLoadingSplashState();
 }
 
 class _LearnSphereLoadingSplashState extends State<LearnSphereLoadingSplash>
-    with TickerProviderStateMixin {
-  late final AnimationController _orbit;
-  late final AnimationController _ring;
-  late final AnimationController _pulse;
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _fadeLogo;
+  late final Animation<double> _scaleLogo;
+  late final Animation<double> _zoomLogo;
+  late final Animation<double> _glow;
+  late final Animation<double> _fadeText;
+  late final Animation<double> _trackingText;
+  late final Animation<double> _swoosh;
 
   @override
   void initState() {
     super.initState();
-    _orbit = AnimationController(vsync: this, duration: const Duration(milliseconds: 3200))..repeat();
-    _ring = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))..repeat();
-    _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat(reverse: true);
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    );
+
+    _fadeLogo = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.0, 0.28, curve: Curves.easeOut),
+    );
+    _scaleLogo = Tween<double>(begin: 3.6, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.42, curve: Curves.easeInCubic),
+      ),
+    );
+    _zoomLogo = Tween<double>(begin: 1.0, end: 1.12).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.72, 1.0, curve: Curves.easeInCubic),
+      ),
+    );
+    _glow = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.18, 0.55, curve: Curves.easeOut),
+      ),
+    );
+    _fadeText = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.38, 0.62, curve: Curves.easeOut),
+    );
+    _trackingText = Tween<double>(begin: 28.0, end: 3.2).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.38, 0.78, curve: Curves.easeOutCubic),
+      ),
+    );
+    _swoosh = Tween<double>(begin: -1.2, end: 1.2).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.08, 0.48, curve: Curves.easeInOutCubic),
+      ),
+    );
+
+    _controller.forward();
   }
 
   @override
   void dispose() {
-    _orbit.dispose();
-    _ring.dispose();
-    _pulse.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
+    final seed = widget.seedColor;
+    final accent = seed;
+    final accentSoft = Color.lerp(seed, Colors.white, 0.42)!;
+    final background = Color.lerp(const Color(0xFFF7F9FC), seed, 0.14)!;
+    final wordmark = Color.lerp(seed, const Color(0xFF0B1220), 0.38)!;
 
     return Scaffold(
-      body: Center(
-        child: SizedBox(
-          width: 220,
-          height: 220,
-          child: Stack(
-            alignment: Alignment.center,
+      backgroundColor: background,
+      body: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final glowOpacity = _glow.value * 0.42;
+          return Stack(
+            fit: StackFit.expand,
             children: [
-              AnimatedBuilder(
-                animation: _orbit,
-                builder: (context, _) {
-                  return CustomPaint(
-                    size: const Size(220, 220),
-                    painter: _OrbitDotsPainter(
-                      progress: _orbit.value,
-                      color: primary,
-                    ),
-                  );
-                },
-              ),
-              AnimatedBuilder(
-                animation: _ring,
-                builder: (context, _) {
-                  return CustomPaint(
-                    size: const Size(180, 180),
-                    painter: _GlobeRingsPainter(
-                      progress: _ring.value,
-                      color: primary,
-                    ),
-                  );
-                },
-              ),
-              ScaleTransition(
-                scale: Tween<double>(begin: 0.94, end: 1.0).animate(
-                  CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(0, -0.04),
+                    radius: 0.55 + (0.2 * _glow.value),
+                    colors: [
+                      accentSoft.withValues(alpha: glowOpacity),
+                      background.withValues(alpha: 0),
+                    ],
+                  ),
                 ),
-                child: const CoachCharacter(size: 96),
+              ),
+              Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Opacity(
+                      opacity: _fadeLogo.value,
+                      child: Transform.scale(
+                        scale: _scaleLogo.value * _zoomLogo.value,
+                        child: child,
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    Opacity(
+                      opacity: _fadeText.value,
+                      child: Text(
+                        'LEARNSPHERE',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: wordmark,
+                          letterSpacing: _trackingText.value,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IgnorePointer(
+                child: Align(
+                  alignment: Alignment(_swoosh.value, 0),
+                  child: Opacity(
+                    opacity: (1 - (_swoosh.value.abs() / 1.2)).clamp(0.0, 1.0) * 0.75,
+                    child: Container(
+                      width: 18,
+                      height: 220,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            accent.withValues(alpha: 0),
+                            accent,
+                            accent.withValues(alpha: 0),
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: accent.withValues(alpha: 0.45),
+                            blurRadius: 28,
+                            spreadRadius: 4,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ],
-          ),
-        ),
+          );
+        },
+        child: const LearnSphereLogo(size: 88, borderRadius: 26),
       ),
     );
   }
 }
 
 /// Standalone [MaterialApp] wrapper used before the main app tree is ready.
-class LearnSphereLoadingSplashApp extends StatelessWidget {
+class LearnSphereLoadingSplashApp extends StatefulWidget {
   const LearnSphereLoadingSplashApp({super.key});
 
-  static const _defaultSeed = Color(0xFF059669);
+  @override
+  State<LearnSphereLoadingSplashApp> createState() => _LearnSphereLoadingSplashAppState();
+}
+
+class _LearnSphereLoadingSplashAppState extends State<LearnSphereLoadingSplashApp> {
+  Color _seed = const Color(0xFF115DE8);
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      if (!mounted) return;
+      setState(() {
+        _seed = Color(prefs.getInt('colorTheme') ?? 0xFF115DE8);
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final background = Color.lerp(const Color(0xFFF7F9FC), _seed, 0.14)!;
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: buildLearnSphereTheme(seedColor: _defaultSeed, brightness: Brightness.light),
-      darkTheme: buildLearnSphereTheme(seedColor: _defaultSeed, brightness: Brightness.dark),
-      themeMode: ThemeMode.system,
-      onGenerateRoute: (_) => MaterialPageRoute<void>(
-        settings: const RouteSettings(name: '/'),
-        builder: (_) => const LearnSphereLoadingSplash(),
+      themeMode: ThemeMode.light,
+      theme: ThemeData(
+        brightness: Brightness.light,
+        colorScheme: ColorScheme.fromSeed(seedColor: _seed),
+        scaffoldBackgroundColor: background,
       ),
+      home: LearnSphereLoadingSplash(seedColor: _seed),
     );
-  }
-}
-
-class _OrbitDotsPainter extends CustomPainter {
-  _OrbitDotsPainter({required this.progress, required this.color});
-
-  final double progress;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width * 0.42;
-    const dotCount = 3;
-
-    for (var i = 0; i < dotCount; i++) {
-      final angle = (i / dotCount) * math.pi * 2 + progress * math.pi * 2;
-      final wobble = math.sin(progress * math.pi * 4 + i) * 4;
-      final dotCenter = center + Offset(math.cos(angle), math.sin(angle)) * (radius + wobble);
-      final dotRadius = 4.5 + math.sin(progress * math.pi * 2 + i) * 1.2;
-
-      canvas.drawCircle(
-        dotCenter,
-        dotRadius,
-        Paint()..color = color.withValues(alpha: 0.55 + 0.35 * math.sin(progress * math.pi * 2 + i)),
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _OrbitDotsPainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.color != color;
-  }
-}
-
-class _GlobeRingsPainter extends CustomPainter {
-  _GlobeRingsPainter({required this.progress, required this.color});
-
-  final double progress;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final baseRadius = size.width * 0.38;
-
-    final ringPaint = Paint()
-      ..color = color.withValues(alpha: 0.22)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    for (var i = 0; i < 3; i++) {
-      final tilt = progress * math.pi * 2 + i * (math.pi / 3);
-      canvas.save();
-      canvas.translate(center.dx, center.dy);
-      canvas.rotate(tilt);
-      canvas.scale(1.0, 0.38 + 0.12 * math.sin(tilt));
-      canvas.drawCircle(Offset.zero, baseRadius, ringPaint);
-      canvas.restore();
-    }
-
-    final dashPaint = Paint()
-      ..color = color.withValues(alpha: 0.18)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-
-    for (var dash = 0; dash < 12; dash++) {
-      final start = dash / 12 + progress;
-      const sweep = 0.04;
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: baseRadius * 1.08),
-        start * math.pi * 2,
-        sweep * math.pi * 2,
-        false,
-        dashPaint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _GlobeRingsPainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.color != color;
   }
 }

@@ -35,5 +35,14 @@ export async function GET(request: NextRequest) {
           process.env.LIVEKIT_API_SECRET?.trim(),
       ),
     },
+    foundry: {
+      configured: Boolean(
+        (process.env.FOUNDRY_API_KEY?.trim() || process.env.AZURE_OPENAI_API_KEY?.trim()) &&
+          (process.env.FOUNDRY_OPENAI_ENDPOINT?.trim() || process.env.AZURE_OPENAI_ENDPOINT?.trim()),
+      ),
+      chatModel: process.env.FOUNDRY_CHAT_MODEL?.trim() || "gpt-4.1-mini",
+      transcriptionModel: process.env.FOUNDRY_TRANSCRIPTION_MODEL?.trim() || "gpt-4o-mini-transcribe",
+      embeddingModel: process.env.FOUNDRY_EMBEDDING_MODEL?.trim() || "text-embedding-3-large",
+    },
   });
 }

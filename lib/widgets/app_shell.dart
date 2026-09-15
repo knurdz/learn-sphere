@@ -4,8 +4,11 @@ import 'package:go_router/go_router.dart';
 
 import '../gamification_provider.dart';
 import '../l10n/app_localizations.dart';
+import '../settings_provider.dart';
+import '../theme.dart';
 import 'coach/coach_overlay.dart';
 import 'coach_tour_scope.dart';
+import 'island_nav_bar.dart';
 import 'responsive_page.dart';
 
 class AppShell extends ConsumerStatefulWidget {
@@ -26,9 +29,9 @@ class _AppShellState extends ConsumerState<AppShell> {
     AppLocalizations l10n,
   ) {
     return [
-      (path: '/feed', label: l10n.navFeed, icon: Icons.dynamic_feed_outlined, selectedIcon: Icons.dynamic_feed),
-      (path: '/learn?tab=live', label: l10n.navLearn, icon: Icons.school_outlined, selectedIcon: Icons.school),
-      (path: '/library', label: l10n.navLibrary, icon: Icons.folder_copy_outlined, selectedIcon: Icons.folder_copy),
+      (path: '/feed', label: l10n.navFeed, icon: Icons.view_carousel_outlined, selectedIcon: Icons.view_carousel),
+      (path: '/learn?tab=live', label: l10n.navLearn, icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble),
+      (path: '/library', label: l10n.navLibrary, icon: Icons.library_books_outlined, selectedIcon: Icons.library_books),
     ];
   }
 
@@ -43,6 +46,10 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   Widget _pageContent() {
+    final location = GoRouterState.of(context).matchedLocation;
+    if (location.startsWith('/feed') && !useSidebarNavigation(context)) {
+      return widget.child;
+    }
     return ResponsivePage(
       child: SafeArea(top: false, child: widget.child),
     );
@@ -95,14 +102,22 @@ class _AppShellState extends ConsumerState<AppShell> {
                       ),
                   ],
                 ),
-                const VerticalDivider(width: 1),
+                VerticalDivider(width: 0.5, color: Theme.of(context).dividerColor),
                 Expanded(child: _pageContent()),
               ],
             ),
           )
         : Scaffold(
+            extendBody: true,
+            backgroundColor: location.startsWith('/feed')
+                ? FeedWorld.canvasFor(
+                    Theme.of(context).brightness,
+                    Color(ref.watch(settingsProvider).colorTheme),
+                  )
+                : null,
             body: _pageContent(),
-            bottomNavigationBar: NavigationBar(
+            bottomNavigationBar: IslandNavBar(
+              immersive: location.startsWith('/feed'),
               selectedIndex: selected,
               onDestinationSelected: (index) => context.go(tabs[index].path),
               destinations: [

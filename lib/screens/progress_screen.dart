@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../gamification_models.dart';
 import '../gamification_provider.dart';
 import '../l10n/app_localizations.dart';
+import '../theme.dart';
 import '../widgets/coach/coach_bubble.dart';
 import '../widgets/coach/coach_character.dart';
 import '../widgets/responsive_page.dart';
@@ -196,41 +197,73 @@ class _DailyGoalRing extends StatelessWidget {
         : (summary.todayEventCount / summary.dailyGoal).clamp(0.0, 1.0);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
+        padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+        child: Column(
           children: [
             SizedBox(
-              width: 72,
-              height: 72,
-              child: CircularProgressIndicator(
-                value: progress,
-                strokeWidth: 8,
-                backgroundColor: theme.colorScheme.surfaceContainerHighest,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              width: 176,
+              height: 176,
+              child: Stack(
+                alignment: Alignment.center,
                 children: [
-                  Text(
-                    l10n.progressDailyGoalTitle,
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  Text(
-                    summary.dailyGoalMet
-                        ? l10n.progressGoalCompleted(clampedDone, goal)
-                        : l10n.coachDailyProgress(clampedDone, goal),
-                  ),
-                  if (summary.dailyGoalMet && extra > 0)
-                    Text(
-                      l10n.progressExtraActivities(extra),
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  SizedBox(
+                    width: 176,
+                    height: 176,
+                    child: CircularProgressIndicator(
+                      value: 1,
+                      strokeWidth: 14,
+                      color: LsColors.mist.withValues(alpha: theme.brightness == Brightness.dark ? 0.25 : 1),
                     ),
-                  Text(l10n.progressTodayXp(summary.todayXp)),
+                  ),
+                  SizedBox(
+                    width: 176,
+                    height: 176,
+                    child: CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: 14,
+                      strokeCap: StrokeCap.round,
+                      color: theme.colorScheme.primary,
+                      backgroundColor: Colors.transparent,
+                    ),
+                  ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '$clampedDone',
+                        style: theme.textTheme.headlineLarge,
+                      ),
+                      Text(
+                        'of $goal',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
+            const SizedBox(height: 20),
+            Text(
+              l10n.progressDailyGoalTitle,
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              summary.dailyGoalMet
+                  ? l10n.progressGoalCompleted(clampedDone, goal)
+                  : l10n.coachDailyProgress(clampedDone, goal),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            if (summary.dailyGoalMet && extra > 0)
+              Text(
+                l10n.progressExtraActivities(extra),
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            Text(l10n.progressTodayXp(summary.todayXp)),
           ],
         ),
       ),
@@ -325,7 +358,7 @@ class _ActivityChart extends StatelessWidget {
                       toY: buckets[i].eventCount.toDouble(),
                       color: theme.colorScheme.primary,
                       width: barWidth,
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                     ),
                   ],
                 ),

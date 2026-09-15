@@ -28,7 +28,7 @@ export function youtubeStoragePathMarker(videoId: string) {
 
 /**
  * Pack short timed caption lines into fewer ~1400-char segments so embedding
- * stays within Gemini free-tier RPM (each text counts as one request).
+ * batches stay efficient.
  */
 export function mergeTimedCaptionSegments(
   segments: SourceSegment[],

@@ -1,4 +1,4 @@
-/** Whisper often emits these on near-silent clips when Groq has no VAD controls. */
+/** Transcription models often emit these on near-silent clips when there is no VAD. */
 const HALLUCINATION_PHRASES = [
   "thank you",
   "thank you thank you",
