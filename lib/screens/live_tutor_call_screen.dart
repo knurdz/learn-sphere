@@ -366,8 +366,17 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
                       ),
                       const SizedBox(width: 12),
                       const Text(
-                        'Live tutor',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 17),
+                        'Live AI',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 17),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF59E0B),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text('AI', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
                       ),
                     ],
                   ),
@@ -389,7 +398,7 @@ class _LiveTutorCallScreenState extends State<LiveTutorCallScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.55),
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(4),
                         ),
                         child: SingleChildScrollView(
                           controller: _captionScrollController,

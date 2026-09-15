@@ -81,7 +81,7 @@ From any main tab, the header shows your **streak / daily goal** chip, **Setting
 
 | Pain | LearnSphere approach |
 |------|----------------------|
-| “ChatGPT doesn’t know my course” | Materials are chunked, embedded (Gemini), and retrieved via Postgres `pgvector` before every tutor answer and live briefing. |
+| “ChatGPT doesn’t know my course” | Materials are chunked, embedded (Foundry `text-embedding-3-large`), and retrieved via Postgres `pgvector` before every tutor answer and live briefing. |
 | Passive reading | Learning feed and study tools turn sources into quizzes, flashcards, memes, and video-oriented artifacts with validated JSON schemas. |
 | Isolated files | Study spaces group materials; tutor and tools always scope to the active space and user (Supabase RLS). |
 | Text-only tutoring | **Live AI tutor**: speak and listen on a video call; turn detection, natural dialogue, and a lip-synced avatar in the same LiveKit room as you. |
@@ -95,7 +95,7 @@ From any main tab, the header shows your **streak / daily goal** chip, **Setting
 ### Live & tutoring
 
 - **Live AI tutor (featured)** — Real-time voice and video on a LiveKit call: talk, get spoken answers, see a lip-synced Beyond Presence avatar; modes for library-grounded tutoring, teach-from-brief, video engagement, and YouTube walkthrough; transcript saved after the call; locale-aware STT/TTS when your language supports live voice.
-- **Chat & voice tutor** — On **Learn → Live tutor**, open **Chat & voice** for grounded text Q&A or record a voice question (Groq transcription → same RAG tutor path as text). No LiveKit worker required for this sheet.
+- **Chat & voice tutor** — On **Learn → Live tutor**, open **Chat & voice** for grounded text Q&A or record a voice question (Foundry transcription → same RAG tutor path as text). No LiveKit worker required for this sheet.
 - **Text tutor (API)** — Multi-turn chat with retrieval-augmented answers, citations (page / timestamp), and locale-aware prompts.
 
 ### Learning content
@@ -107,7 +107,7 @@ From any main tab, the header shows your **streak / daily goal** chip, **Setting
 
 - **Auth** — Email + password, **Google sign-in**, **6-digit email OTP** for sign-up verification, forgot-password and recovery OTP flows (`learnsphere://auth/callback` for deep links where needed).
 - **Study spaces & library** — CRUD via Supabase; upload PDF, DOCX, plain text, audio/video; ingest status; signed URLs for viewing.
-- **Ingestion & RAG** — Server-side extract (PDF/DOCX/text, Groq transcription for media), overlap chunking, Gemini embeddings, `match_material_chunks` with similarity threshold.
+- **Ingestion & RAG** — Server-side extract (PDF/DOCX/text, Foundry transcription for media), overlap chunking, Foundry embeddings, `match_material_chunks` with similarity threshold.
 
 ### Sphere coach & progress
 
@@ -168,15 +168,13 @@ flowchart TB
   end
 
   subgraph cloud [Managed services]
-    GROQ[Groq LLM + Whisper]
-    GEM[Gemini embeddings]
+    FOUNDRY[Foundry chat + transcribe + embeddings]
     LKC[LiveKit Cloud]
   end
 
-  ING --> GROQ
-  ING --> GEM
-  RET --> GEM
-  GEN --> GROQ
+  ING --> FOUNDRY
+  RET --> FOUNDRY
+  GEN --> FOUNDRY
   GAM --> SB
   LK --> LKC
   UI -->|WebRTC| LKC
@@ -195,7 +193,7 @@ flowchart TB
 | Bridge + site | Next.js 16 standalone in Docker locally/on VM, Vitest | `/api/*` orchestration and gamification recording **plus** the public landing site at `/` (marketing pages + Android download) |
 | Edge | **Caddy 2** on VM (production) | TLS, reverse proxy to bridge; long timeouts for generate/ingest |
 | Live worker | LiveKit Agents in Docker, Beyond Presence plugin | Long-running RTC session; STT/LLM/TTS from dispatch metadata |
-| Models | Groq (chat + transcription), Gemini (embeddings), LiveKit Inference (live STT/LLM/TTS), Cartesia/Inworld TTS per locale | Chosen per workload |
+| Models | Microsoft Foundry (`gpt-4.1-mini`, `gpt-4o-mini-transcribe`, `text-embedding-3-large`), LiveKit Inference (live STT/LLM/TTS), Cartesia/Inworld TTS per locale | Chosen per workload |
 
 Local development runs **api** and **agent** with `pnpm dev` / `python agent.py dev` instead of Docker; production uses [`deploy/`](deploy/). See [Production deployment (VM + Docker)](#production-deployment-vm--docker).
 
@@ -233,7 +231,7 @@ Beyond the landing site at `/`, the Next.js app is primarily an **orchestration 
 
 - **Ingest agent path** — Download from Storage → format-specific extraction → sliding-window chunks → embedding batches → replace `material_chunks` for that material.
 - **Retrieval agent path** — Embed the user question as `RETRIEVAL_QUERY`, call `match_material_chunks`, filter by similarity, attach citation metadata.
-- **Text tutor path** — Build context from retrieved chunks, call Groq with JSON-shaped answers when possible, map `citation_ids` back to rows the user can open in the library; honor `languageCode` from the app locale; optional **voice** entry transcribes audio then reuses the same answer path.
+- **Text tutor path** — Build context from retrieved chunks, call Foundry with JSON-shaped answers when possible, map `citation_ids` back to rows the user can open in the library; honor `languageCode` from the app locale; optional **voice** entry transcribes audio then reuses the same answer path.
 - **Generation agents** — Separate pipelines for learning feed (`meme-generator`: concept “atoms” → per-kind payloads → meme rasterization from local templates) and study tools (Zod-validated video quiz / create / engage payloads, including YouTube context helpers).
 - **Gamification path** — `recordActivityFailOpen` on feed attempts, tutor messages, live session start, uploads, study-tool generation, and quiz completion; updates streaks/XP in `user_gamification` and append-only `user_activity_events` (idempotent keys where needed); summary + analytics + coach tour state exposed to the client.
 - **Live session agent** — On session create, assemble mode-specific **teaching instructions** from ready materials and optional YouTube/brief; reject live voice for unsupported locales; cache briefing server-side; mint LiveKit token with **RoomAgentDispatch** (session id, Supabase JWT, locale, STT/TTS fields) so only bridge-created rooms pull in the worker.
@@ -253,11 +251,11 @@ The worker does not re-implement RAG in the hot path—the bridge pre-computes t
 
 ### 3. Client as coordination agent
 
-The Flutter app chooses study space, triggers ingest, drives feed/tools generation, opens text/voice tutor sessions, syncs locale to `profiles.preferred_locale`, loads gamification summary for Sphere, and joins LiveKit with the minted token. It never holds Groq/Gemini/LiveKit secrets.
+The Flutter app chooses study space, triggers ingest, drives feed/tools generation, opens text/voice tutor sessions, syncs locale to `profiles.preferred_locale`, loads gamification summary for Sphere, and joins LiveKit with the minted token. It never holds Foundry/LiveKit secrets.
 
 ### Why this is not “just a wrapper”
 
-Integrations (Groq, Gemini, LiveKit, Beyond Presence) sit behind **first-party logic**:
+Integrations (Foundry, LiveKit, Beyond Presence) sit behind **first-party logic**:
 
 - Custom chunking, overlap, and ingest for PDF/DOCX/media—not “send file to model.”
 - Postgres RPC vector search with user/space isolation—not generic vector DB SDK demos.
@@ -330,7 +328,7 @@ Edit `.env.local`:
 cp api/.env.example api/.env.local
 ```
 
-Fill in `NEXT_PUBLIC_SUPABASE_*`, `GROQ_API_KEY`, and `GEMINI_API_KEY`. Add `LIVEKIT_*` if you want the live tutor. Provider secrets stay server-side only.
+Fill in `NEXT_PUBLIC_SUPABASE_*`, `FOUNDRY_OPENAI_ENDPOINT`, `FOUNDRY_API_KEY`, and the Foundry model names. Add `LIVEKIT_*` if you want the live tutor. Provider secrets stay server-side only.
 
 **Live tutor worker (`agent/`)**
 
@@ -458,7 +456,7 @@ The same Next.js app that serves `/api/*` also renders a **public marketing site
 
 ## Production deployment (VM + Docker)
 
-Production runs on a **single Ubuntu VM** (e.g. Azure, ~8 GB RAM) using **Docker Compose**. **`https://learnsphere.knurdz.org`** serves both the **landing site** (`/`) and the **bridge API** (`/api/*`). **Supabase**, **Groq**, **Gemini**, **LiveKit**, and **Beyond Presence** remain external—the VM only runs the **bridge/site**, **live tutor worker**, and **Caddy** reverse proxy.
+Production runs on a **single Ubuntu VM** (e.g. Azure, ~8 GB RAM) using **Docker Compose**. **`https://learnsphere.knurdz.org`** serves both the **landing site** (`/`) and the **bridge API** (`/api/*`). **Supabase**, **Microsoft Foundry**, **LiveKit**, and **Beyond Presence** remain external—the VM only runs the **bridge/site**, **live tutor worker**, and **Caddy** reverse proxy.
 
 ### DNS and domain
 
@@ -479,7 +477,7 @@ API_BASE_URL=https://learnsphere.knurdz.org
 | Path | Purpose |
 |------|---------|
 | `/opt/learnsphere/app` | Git clone of [knurdz/learn-sphere](https://github.com/knurdz/learn-sphere) |
-| `/opt/learnsphere/env/api.env` | Bridge secrets (Supabase public vars, Groq, Gemini, LiveKit)—**not in git** |
+| `/opt/learnsphere/env/api.env` | Bridge secrets (Supabase public vars, Foundry, LiveKit)—**not in git** |
 | `/opt/learnsphere/env/agent.env` | Worker secrets (LiveKit, Beyond Presence)—**not in git** |
 | `/opt/learnsphere/app/deploy/` | Compose, Caddyfile, `bootstrap.sh`, `up.sh` |
 | `/opt/learnsphere/app/deploy/.env` | `LEARNSPHERE_ENV_DIR=/opt/learnsphere/env` for Docker Compose |
@@ -540,7 +538,7 @@ flowchart LR
 | Live video / audio with avatar | **WebRTC** → **LiveKit Cloud** (token from bridge) |
 | Worker briefing / transcript | **agent** → **`http://api:3000`** on Docker network (not public) |
 
-Secrets for Groq, Gemini, LiveKit server, and Beyond never ship in the APK.
+Secrets for Foundry, LiveKit server, and Beyond never ship in the APK.
 
 ### Deploy on the VM
 
@@ -624,7 +622,7 @@ You can deploy [`api/`](api/) alone to Vercel or Cloud Run; run the live worker 
 | App cannot reach API on Wi‑Fi | Use `-H 0.0.0.0` and LAN IP in `API_BASE_URL`; same network as dev machine |
 | Email confirm link fails | Add `learnsphere://auth/callback` in Supabase redirect URLs |
 | Build error: asset `.env.local` missing | Copy `.env.example` → `.env.local` at repo root |
-| Ingest / tutor errors | Start `api/` and set `GROQ_*` / `GEMINI_*` in `api/.env.local` |
+| Ingest / tutor errors | Start `api/` and set `FOUNDRY_*` in `api/.env.local` |
 | Live tutor connects but no avatar appears | The `agent/` worker is not running, or its `LIVEKIT_*` values differ from `api/.env.local` |
 | Live tutor says LiveKit is not configured | Add `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` to `api/.env.local` |
 | Generic API **500** / Dio validateStatus | Often a **broken** Next dev server on port 3000 (stale `api/.next`). Stop all `pnpm dev` processes, then `cd api && rm -rf .next && pnpm dev`. Keep **one** API on port 3000 so it matches `API_BASE_URL=http://127.0.0.1:3000`. |

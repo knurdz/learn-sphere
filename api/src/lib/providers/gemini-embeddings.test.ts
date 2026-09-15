@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./config", () => ({
-  requiredServerEnv: vi.fn(() => "test-gemini-key"),
-}));
-
 import {
   EmbeddingRateLimitError,
   embedTexts,
@@ -12,15 +8,21 @@ import {
   parseRetryDelayMs,
 } from "./gemini-embeddings";
 
-describe("Gemini embeddings", () => {
+describe("Foundry embeddings via gemini compatibility exports", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    process.env.FOUNDRY_API_KEY = "test-foundry-key";
+    process.env.FOUNDRY_OPENAI_ENDPOINT = "https://example.openai.azure.com/openai/v1";
+    process.env.FOUNDRY_EMBEDDING_DIMENSIONS = "1536";
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+    delete process.env.FOUNDRY_API_KEY;
+    delete process.env.FOUNDRY_OPENAI_ENDPOINT;
+    delete process.env.FOUNDRY_EMBEDDING_DIMENSIONS;
   });
 
   it("parses retry delay from quota error messages", () => {
@@ -39,17 +41,14 @@ describe("Gemini embeddings", () => {
         if (calls === 1) {
           return new Response(
             JSON.stringify({
-              error: {
-                message:
-                  "You exceeded your current quota. Please retry in 1.5s.",
-              },
+              error: { message: "You exceeded your current quota. Please retry in 1.5s." },
             }),
             { status: 429 },
           );
         }
         return new Response(
           JSON.stringify({
-            embeddings: [{ values: embedding }],
+            data: [{ embedding, index: 0 }],
           }),
           { status: 200 },
         );
@@ -68,13 +67,14 @@ describe("Gemini embeddings", () => {
   it("throws a friendly rate-limit error after retries are exhausted", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({
-            error: { message: "You exceeded your current quota. Please retry in 0.01s." },
-          }),
-          { status: 429 },
-        ),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: { message: "You exceeded your current quota. Please retry in 0.01s." },
+            }),
+            { status: 429 },
+          ),
       ),
     );
 
@@ -89,12 +89,10 @@ describe("Gemini embeddings", () => {
   it("embeds in paced batches of GEMINI_EMBED_BATCH_SIZE", async () => {
     const embedding = Array.from({ length: 1536 }, (_, index) => (index === 0 ? 1 : 0));
     const fetchMock = vi.fn(async (_input: string | URL, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body || "{}")) as {
-        requests?: unknown[];
-      };
+      const body = JSON.parse(String(init?.body || "{}")) as { input?: unknown[] };
       return new Response(
         JSON.stringify({
-          embeddings: (body.requests || []).map(() => ({ values: embedding })),
+          data: (body.input || []).map((_, index) => ({ embedding, index })),
         }),
         { status: 200 },
       );

@@ -6,6 +6,7 @@ import '../../gamification_models.dart';
 import '../../gamification_provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../settings_provider.dart';
+import '../../theme.dart';
 import '../coach_tour_scope.dart';
 import 'coach_bubble.dart';
 import 'coach_character.dart';
@@ -126,7 +127,7 @@ class _CoachOverlayState extends ConsumerState<CoachOverlay> {
               final screen = media.size;
               const mascotSize = _FloatingMascotLayer.mascotSize;
               final effectivePos = pos == Offset.zero
-                  ? _FloatingMascotLayerState.defaultPosition(screen, media.padding)
+                  ? _FloatingMascotLayerState.defaultPosition(screen, media.viewPadding)
                   : pos;
               const gap = 12.0;
               final mascotOnRight = effectivePos.dx > screen.width * 0.5;
@@ -241,7 +242,7 @@ class _FloatingMascotLayer extends StatefulWidget {
     required this.onTap,
   });
 
-  static const double mascotSize = 68;
+  static const double mascotSize = LsLayout.coachMascotSize;
 
   final ValueNotifier<Offset> positionListenable;
   final VoidCallback onTap;
@@ -250,19 +251,22 @@ class _FloatingMascotLayer extends StatefulWidget {
   State<_FloatingMascotLayer> createState() => _FloatingMascotLayerState();
 }
 
-class _FloatingMascotLayerState extends State<_FloatingMascotLayer> {
+class _FloatingMascotLayerState extends State<_FloatingMascotLayer>
+  with SingleTickerProviderStateMixin {
   static const double _size = _FloatingMascotLayer.mascotSize;
 
   ValueNotifier<Offset> get _position => widget.positionListenable;
   final ValueNotifier<bool> _engaged = ValueNotifier<bool>(false);
+  late final AnimationController _breathingController;
+  late final Animation<double> _breathingOffset;
   bool _positionReady = false;
 
   static Offset defaultPosition(Size screen, EdgeInsets padding) {
-    final bottomInset = padding.bottom + kBottomNavigationBarHeight + 12;
     final topInset = padding.top + 8;
-    final maxLeft = screen.width - _size - 8;
-    final maxTop = screen.height - bottomInset - _size - 8;
-    return Offset((maxLeft - 12).clamp(8.0, maxLeft), (maxTop - 100).clamp(topInset, maxTop));
+    final bottomInset = padding.bottom + LsLayout.islandNavHeight + LsLayout.aboveNavGap;
+    final maxTop = screen.height - bottomInset - _size;
+    // Lower-left, just above the three island-nav icons.
+    return Offset(16, maxTop.clamp(topInset, maxTop));
   }
 
   int? _activePointer;
@@ -273,22 +277,30 @@ class _FloatingMascotLayerState extends State<_FloatingMascotLayer> {
   @override
   void initState() {
     super.initState();
+    _breathingController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    )..repeat(reverse: true);
+    _breathingOffset = Tween<double>(begin: -5, end: 5).animate(
+      CurvedAnimation(parent: _breathingController, curve: Curves.easeInOutSine),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _positionReady) return;
       _positionReady = true;
-      _position.value = defaultPosition(MediaQuery.sizeOf(context), MediaQuery.paddingOf(context));
+      _position.value = defaultPosition(MediaQuery.sizeOf(context), MediaQuery.viewPaddingOf(context));
     });
   }
 
   @override
   void dispose() {
+    _breathingController.dispose();
     _engaged.dispose();
     super.dispose();
   }
 
   Offset _clamp(Offset next, Size screen) {
-    final padding = MediaQuery.paddingOf(context);
-    final bottomInset = padding.bottom + kBottomNavigationBarHeight + 12;
+    final padding = MediaQuery.viewPaddingOf(context);
+    final bottomInset = padding.bottom + LsLayout.islandNavHeight + LsLayout.aboveNavGap;
     final topInset = padding.top + 8;
     final maxLeft = screen.width - _size - 8;
     final maxTop = screen.height - bottomInset - _size - 8;
@@ -299,7 +311,7 @@ class _FloatingMascotLayerState extends State<_FloatingMascotLayer> {
     if (_activePointer != null) return;
     if (!_positionReady) {
       _positionReady = true;
-      _position.value = defaultPosition(screen, MediaQuery.paddingOf(context));
+      _position.value = defaultPosition(screen, MediaQuery.viewPaddingOf(context));
     }
     _activePointer = event.pointer;
     _dragMoved = false;
@@ -336,15 +348,20 @@ class _FloatingMascotLayerState extends State<_FloatingMascotLayer> {
           ValueListenableBuilder<Offset>(
             valueListenable: _position,
             builder: (context, pos, child) {
-              return Positioned(
-                left: 0,
-                top: 0,
-                child: Transform.translate(
-                  offset: _positionReady
-                      ? pos
-                      : defaultPosition(screen, MediaQuery.paddingOf(context)),
-                  child: child,
+              return AnimatedBuilder(
+                animation: _breathingOffset,
+                builder: (context, breathingChild) => Positioned(
+                  left: 0,
+                  top: 0,
+                  child: Transform.translate(
+                    offset: (_positionReady
+                            ? pos
+                            : defaultPosition(screen, MediaQuery.viewPaddingOf(context))) +
+                        Offset(0, _breathingOffset.value),
+                    child: breathingChild,
+                  ),
                 ),
+                child: child,
               );
             },
             child: Listener(

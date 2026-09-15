@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models.dart';
+import 'clinical_sections.dart';
 
 /// Tappable card that opens a bottom sheet to pick a study space.
 class StudySpacePickerCard extends StatelessWidget {
@@ -48,89 +49,72 @@ class StudySpacePickerCard extends StatelessWidget {
     final selected = _selected;
 
     if (spaces.isEmpty) {
-      return Card(
-        child: InkWell(
-          onTap: enabled ? () => context.go('/library?prompt=createSpace') : null,
-          borderRadius: BorderRadius.circular(24),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Row(
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(Icons.add_circle_outline, color: theme.colorScheme.primary),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'No study space yet',
-                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Tap to create a subject in Library',
-                        style: theme.textTheme.bodySmall?.copyWith(color: Colors.blueGrey),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_right, color: theme.colorScheme.primary),
-              ],
+      return ClinicalGlassCard(
+        onTap: enabled ? () => context.go('/library?prompt=createSpace') : null,
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(Icons.add_circle_outline, color: theme.colorScheme.primary),
             ),
-          ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'No study space yet',
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Tap to create a subject in Library',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: theme.colorScheme.primary),
+          ],
         ),
       );
     }
 
-    return Card(
-      child: InkWell(
-        onTap: enabled ? () => _openSheet(context) : null,
-        borderRadius: BorderRadius.circular(24),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(Icons.menu_book_rounded, color: theme.colorScheme.primary),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Study space',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: Colors.blueGrey,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      selected?.name ?? 'Choose a subject',
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.expand_more, color: theme.colorScheme.primary, size: 28),
-            ],
+    return ClinicalGlassCard(
+      onTap: enabled ? () => _openSheet(context) : null,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.menu_book_rounded, color: theme.colorScheme.primary),
           ),
-        ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const ClinicalSectionLabel('Study space'),
+                const SizedBox(height: 4),
+                Text(
+                  selected?.name ?? 'Choose a subject',
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.expand_more, color: theme.colorScheme.primary, size: 28),
+        ],
       ),
     );
   }
@@ -167,7 +151,7 @@ class _StudySpaceSheet extends StatelessWidget {
                     ListTile(
                       leading: Icon(
                         Icons.folder_copy_outlined,
-                        color: space.id == selectedId ? theme.colorScheme.primary : Colors.blueGrey,
+                        color: space.id == selectedId ? theme.colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.5),
                       ),
                       title: Text(space.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                       subtitle: (space.description ?? '').isNotEmpty

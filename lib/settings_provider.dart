@@ -12,7 +12,7 @@ enum AppCardTone { defaultTone, colorful, single }
 class AppSettings {
   const AppSettings({
     this.themeMode = AppThemeMode.system,
-    this.colorTheme = 0xFF059669,
+    this.colorTheme = 0xFF115DE8,
     this.cardTone = AppCardTone.defaultTone,
     this.appLanguage = 'en',
     this.showCoachMascot = true,
@@ -52,7 +52,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final prefs = ref.watch(sharedPreferencesProvider);
     return AppSettings(
       themeMode: AppThemeMode.values[prefs.getInt('themeMode') ?? 0],
-      colorTheme: prefs.getInt('colorTheme') ?? 0xFF059669,
+      colorTheme: prefs.getInt('colorTheme') ?? 0xFF115DE8,
       cardTone: AppCardTone.values[prefs.getInt('cardTone') ?? 0],
       appLanguage: normalizeAppLanguageCode(prefs.getString(_languageKey)),
       showCoachMascot: prefs.getBool(_showCoachMascotKey) ?? true,

@@ -7,6 +7,8 @@ import '../models.dart';
 import '../api_client.dart';
 import '../repositories.dart';
 import '../gamification_provider.dart';
+import '../theme.dart';
+import '../widgets/clinical_sections.dart';
 import '../widgets/study_space_picker.dart';
 
 const studyKinds = <({String value, String label, IconData icon})>[
@@ -176,42 +178,34 @@ class _StudyToolsPanelState extends ConsumerState<StudyToolsPanel> {
     final theme = Theme.of(context);
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, islandNavClearance(context)),
       children: [
         if (_spaces.isEmpty)
-          Card(
-            color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Set up a study space first',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text('Add a subject and materials in Library, then generate quizzes and lessons here.'),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: () => context.go('/library?prompt=createSpace'),
-                    child: const Text('Set up in Library'),
-                  ),
-                ],
-              ),
+          ClinicalGlassCard(
+            tint: theme.colorScheme.primary.withValues(alpha: theme.brightness == Brightness.dark ? 0.12 : 0.08),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const ClinicalSectionLabel('Workshop'),
+                const SizedBox(height: 8),
+                Text(
+                  'Set up a study space first',
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                const Text('Add a subject and materials in Library, then generate quizzes and lessons here.'),
+                const SizedBox(height: 14),
+                FilledButton(
+                  onPressed: () => context.go('/library?prompt=createSpace'),
+                  child: const Text('Set up in Library'),
+                ),
+              ],
             ),
           ),
-        if (_spaces.isEmpty) const SizedBox(height: 24),
+        if (_spaces.isEmpty) const SizedBox(height: 20),
         if (_spaces.isNotEmpty) ...[
-          Text(
-            'Choose your subject',
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.2,
-            ),
-          ),
-          const SizedBox(height: 14),
+          const ClinicalSectionLabel('Subject'),
+          const SizedBox(height: 10),
           StudySpacePickerCard(
             spaces: _spaces,
             selectedId: _spaceId,
@@ -221,102 +215,87 @@ class _StudyToolsPanelState extends ConsumerState<StudyToolsPanel> {
               await _loadTools();
             },
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
         ],
-        Text(
-          'Create a tool',
-          style: theme.textTheme.labelLarge?.copyWith(
-            color: theme.colorScheme.primary,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.2,
-          ),
-        ),
-        const SizedBox(height: 14),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Generate from YouTube or Library',
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: studyKinds
-                      .map(
-                        (kind) => ChoiceChip(
-                          avatar: Icon(kind.icon, size: 17),
-                          label: Text(kind.label),
+        const ClinicalSectionLabel('Forge a tool'),
+        const SizedBox(height: 10),
+        ClinicalGlassCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Generate from YouTube or Library',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  for (final kind in studyKinds) ...[
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(right: kind == studyKinds.last ? 0 : 8),
+                        child: _ToolKindChip(
+                          label: kind.label,
+                          icon: kind.icon,
                           selected: _kind == kind.value,
-                          onSelected: _busy ? null : (_) => setState(() => _kind = kind.value),
+                          onTap: _busy ? null : () => setState(() => _kind = kind.value),
                         ),
-                      )
-                      .toList(),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: _youtubeUrl,
-                  enabled: !_busy,
-                  decoration: const InputDecoration(
-                    labelText: 'YouTube URL (optional)',
-                    hintText: 'Any public YouTube watch, Shorts, or youtu.be link',
-                    helperText: 'Captions are used when available; otherwise you can confirm audio transcription.',
-                    prefixIcon: Icon(Icons.link),
-                  ),
-                  keyboardType: TextInputType.url,
-                ),
-                if (_kind == 'video_create') ...[
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _brief,
-                    enabled: !_busy,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Lesson brief (optional)',
-                      hintText: 'What should this lesson cover?',
-                      alignLabelWithHint: true,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
-                const SizedBox(height: 14),
-                FilledButton.icon(
-                  onPressed: _busy ? null : _generate,
-                  icon: _busy
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.auto_awesome),
-                  label: const Text('Generate'),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _youtubeUrl,
+                enabled: !_busy,
+                decoration: const InputDecoration(
+                  labelText: 'YouTube URL (optional)',
+                  hintText: 'Any public YouTube watch, Shorts, or youtu.be link',
+                  prefixIcon: Icon(Icons.link),
+                ),
+                keyboardType: TextInputType.url,
+              ),
+              if (_kind == 'video_create') ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _brief,
+                  enabled: !_busy,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Lesson brief (optional)',
+                    alignLabelWithHint: true,
+                  ),
                 ),
               ],
-            ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _busy ? null : _generate,
+                icon: _busy
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.auto_awesome),
+                label: const Text('Generate'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  shape: const StadiumBorder(),
+                ),
+              ),
+            ],
           ),
         ),
         if (_error != null) ...[
           const SizedBox(height: 14),
           Text(_error!, style: TextStyle(color: Colors.red.shade700)),
         ],
-        const SizedBox(height: 28),
-        Text(
-          'Saved tools',
-          style: theme.textTheme.labelLarge?.copyWith(
-            color: theme.colorScheme.primary,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.2,
-          ),
-        ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 24),
+        const ClinicalSectionLabel('Saved tools'),
+        const SizedBox(height: 10),
         if (_artifacts.isEmpty)
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(20),
-              child: Text('No tools yet. Generate one from a YouTube URL or Library material.'),
-            ),
+          const ClinicalGlassCard(
+            child: Text('No tools yet. Generate one from a YouTube URL or Library material.'),
           ),
         ..._artifacts.map(_artifactCard),
       ],
@@ -338,52 +317,47 @@ class _StudyToolsPanelState extends ConsumerState<StudyToolsPanel> {
 
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () => _openArtifact(artifact),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(
-                    isQuiz
-                        ? Icons.quiz_outlined
-                        : artifact.kind == 'video_engage'
-                            ? Icons.play_circle_outline
-                            : Icons.movie_creation_outlined,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(artifact.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 4),
-                      Text(
-                        artifact.kind.replaceAll('_', ' '),
-                        style: const TextStyle(color: Colors.blueGrey, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => _openArtifact(artifact),
-                  icon: Icon(openIcon),
-                  tooltip: openTooltip,
-                ),
-              ],
+      child: ClinicalGlassCard(
+        onTap: () => _openArtifact(artifact),
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                isQuiz
+                    ? Icons.quiz_outlined
+                    : artifact.kind == 'video_engage'
+                        ? Icons.play_circle_outline
+                        : Icons.movie_creation_outlined,
+                color: Theme.of(context).colorScheme.primary,
+              ),
             ),
-          ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(artifact.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 4),
+                  Text(
+                    artifact.kind.replaceAll('_', ' '),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: () => _openArtifact(artifact),
+              icon: Icon(openIcon),
+              tooltip: openTooltip,
+            ),
+          ],
         ),
       ),
     );
@@ -1204,6 +1178,53 @@ class _EmptyBlock extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Text(message, style: TextStyle(color: Colors.blueGrey.shade700, height: 1.4)),
+      ),
+    );
+  }
+}
+
+class _ToolKindChip extends StatelessWidget {
+  const _ToolKindChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: selected ? theme.colorScheme.primary.withValues(alpha: 0.14) : theme.colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Column(
+            children: [
+              Icon(icon, size: 20, color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

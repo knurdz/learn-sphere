@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../l10n/app_localizations.dart';
 import '../models.dart';
 import '../repositories.dart';
-import '../widgets/app_header_actions.dart';
+import '../theme.dart';
+import '../widgets/clinical_sections.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
@@ -177,6 +179,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Delete file?'),
         content: Text(
           'Delete "${material.name}" from this space? This also removes generated learning content from this file.',
@@ -244,109 +247,151 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         material.status == MaterialStatus.processing;
   }
 
+  int _materialCountFor(String? spaceId) {
+    if (spaceId == null) return _materials.length;
+    return _materials.where((item) => item.studySpaceId == spaceId).length;
+  }
+
+  IconData _fileIcon(String name) {
+    final lower = name.toLowerCase();
+    if (lower.endsWith('.pdf')) return Icons.picture_as_pdf_outlined;
+    if (lower.endsWith('.mp3') || lower.endsWith('.wav')) return Icons.audiotrack_outlined;
+    if (lower.endsWith('.mp4')) return Icons.movie_outlined;
+    if (lower.endsWith('.docx')) return Icons.description_outlined;
+    return Icons.insert_drive_file_outlined;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final selectedMaterials = _selectedSpaceId == null
         ? _materials
         : _materials.where((item) => item.studySpaceId == _selectedSpaceId).toList();
     final theme = Theme.of(context);
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(20, MediaQuery.paddingOf(context).top + 14, 20, 28),
+    final isDark = theme.brightness == Brightness.dark;
+    final readyCount = selectedMaterials.where((m) => m.status == MaterialStatus.ready).length;
+
+    return ClinicalSectionBackground(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Library',
-                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Manage your materials.',
-                      style: theme.textTheme.bodyMedium?.copyWith(color: Colors.blueGrey, height: 1.45),
+          Padding(
+            padding: EdgeInsets.fromLTRB(20, MediaQuery.paddingOf(context).top + 14, 20, 0),
+            child: ClinicalSectionHeader(
+              title: l10n.libraryTitle,
+              subtitle: l10n.librarySubtitle,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+                children: [
+                  if (_error != null) ...[
+                    const SizedBox(height: 16),
+                    ClinicalGlassCard(
+                      tint: Colors.red.withValues(alpha: isDark ? 0.14 : 0.08),
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(_error!, style: TextStyle(color: Colors.red.shade800, height: 1.4)),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
-                ),
-              ),
-              const AppHeaderActions(),
-            ],
-          ),
-          const SizedBox(height: 22),
-          if (_error != null) ...[
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(16)),
-              child: Text(_error!, style: TextStyle(color: Colors.red.shade800)),
-            ),
-            const SizedBox(height: 14),
-          ],
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                  const SizedBox(height: 16),
                   Row(
                     children: [
-                      const Expanded(
-                        child: Text('Study spaces', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                      const Expanded(child: ClinicalSectionLabel('Subjects')),
+                      TextButton.icon(
+                        onPressed: _createSpace,
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        label: const Text('New'),
                       ),
-                      TextButton.icon(onPressed: _createSpace, icon: const Icon(Icons.add), label: const Text('New')),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   if (_spaces.isEmpty)
-                    const Text('Create a subject before adding material.')
-                  else
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedSpaceId,
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.book_outlined),
-                        labelText: 'Current subject',
+                    ClinicalGlassCard(
+                      tint: theme.colorScheme.primary.withValues(alpha: isDark ? 0.12 : 0.08),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Create your first subject',
+                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Subjects organize materials for Feed, Live Tutor, and Study Tools.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              height: 1.45,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          FilledButton(
+                            onPressed: _createSpace,
+                            style: FilledButton.styleFrom(shape: const StadiumBorder()),
+                            child: const Text('Create subject'),
+                          ),
+                        ],
                       ),
-                      items: _spaces
-                          .map((space) => DropdownMenuItem(value: space.id, child: Text(space.name)))
-                          .toList(),
-                      onChanged: (value) => setState(() => _selectedSpaceId = value),
+                    )
+                  else
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        mainAxisSpacing: 10,
+                        crossAxisSpacing: 10,
+                        childAspectRatio: 1.05,
+                      ),
+                      itemCount: _spaces.length,
+                      itemBuilder: (context, index) {
+                        final space = _spaces[index];
+                        final selected = space.id == _selectedSpaceId;
+                        final count = _materialCountFor(space.id);
+                        return _LibrarySpaceTile(
+                          name: space.name,
+                          description: space.description,
+                          fileCount: count,
+                          selected: selected,
+                          onTap: () => setState(() => _selectedSpaceId = space.id),
+                        );
+                      },
                     ),
+                  const SizedBox(height: 16),
+                  const ClinicalSectionLabel('Files'),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${selectedMaterials.length} file${selectedMaterials.length == 1 ? '' : 's'} · $readyCount feed ready',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 10),
+                  if (selectedMaterials.isEmpty)
+                    const ClinicalGlassCard(
+                      child: Text(
+                        'No files yet. Tap Add material to upload PDF, DOCX, TXT, MP3, WAV, or MP4.',
+                      ),
+                    ),
+                  if (_busyId == 'upload') ...[
+                    const SizedBox(height: 12),
+                    const LinearProgressIndicator(minHeight: 4, borderRadius: BorderRadius.all(Radius.circular(16))),
+                  ],
+                  ...selectedMaterials.map(_materialCard),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: _busyId == 'upload' ? null : _upload,
-            icon: _busyId == 'upload'
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : const Icon(Icons.upload_file_outlined),
-            label: Text(_busyId == 'upload' ? 'Uploading…' : 'Upload material'),
-          ),
-          if (_busyId == 'upload') ...[
-            const SizedBox(height: 12),
-            const LinearProgressIndicator(minHeight: 4, borderRadius: BorderRadius.all(Radius.circular(4))),
-          ],
-          const SizedBox(height: 24),
-          Text(
-            '${selectedMaterials.length} material${selectedMaterials.length == 1 ? '' : 's'}',
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 10),
-          if (selectedMaterials.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(22),
-                child: Text('PDF, DOCX, TXT, MP3, WAV, and MP4 files up to 25 MB are supported.'),
-              ),
-            ),
-          ...selectedMaterials.map(_materialCard),
         ],
       ),
     );
@@ -358,122 +403,225 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final ready = material.status == MaterialStatus.ready && !preparing;
     final failed = material.status == MaterialStatus.error || material.status == MaterialStatus.uploadFailed;
     final showProgress = _showMaterialProgress(material) && !failed;
-    final primary = Theme.of(context).colorScheme.primary;
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
 
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(
-                      Icons.insert_drive_file_outlined,
-                      color: primary,
-                      size: 26,
+      child: ClinicalGlassCard(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(_fileIcon(material.name), color: primary, size: 24),
+                ),
+                if (ready)
+                  Positioned(
+                    right: -4,
+                    bottom: -4,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surface,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.check_circle_rounded, color: Colors.green.shade600, size: 18),
                     ),
                   ),
-                  if (ready)
-                    Positioned(
-                      right: -4,
-                      bottom: -4,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(Icons.check_circle, color: Colors.green.shade600, size: 20),
+              ],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    material.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 8),
+                  _MaterialStatusPill(
+                    label: _materialStatusLabel(material),
+                    ready: ready,
+                    failed: failed,
+                  ),
+                  if (showProgress) ...[
+                    const SizedBox(height: 10),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: LinearProgressIndicator(
+                        minHeight: 4,
+                        backgroundColor: primary.withValues(alpha: 0.12),
+                        color: primary,
                       ),
                     ),
-                ],
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                  ],
+                  if (failed && material.ingestionError != null) ...[
+                    const SizedBox(height: 8),
                     Text(
-                      material.name,
+                      material.ingestionError!,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: TextStyle(color: Colors.red.shade700, fontSize: 11, height: 1.35),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _materialStatusLabel(material),
-                      style: TextStyle(
-                        color: ready
-                            ? Colors.green.shade700
-                            : failed
-                                ? Colors.red.shade700
-                                : Colors.blueGrey,
-                        fontSize: 12,
-                        fontWeight: ready ? FontWeight.w600 : FontWeight.w500,
-                      ),
-                    ),
-                    if (showProgress) ...[
-                      const SizedBox(height: 10),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          minHeight: 4,
-                          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                          color: primary,
-                        ),
-                      ),
-                    ],
-                    if (failed && material.ingestionError != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        material.ingestionError!,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Colors.red.shade700, fontSize: 11),
-                      ),
-                    ],
                   ],
+                ],
+              ),
+            ),
+            if (preparing || deleting)
+              Padding(
+                padding: const EdgeInsets.only(left: 8, top: 4),
+                child: SizedBox.square(
+                  dimension: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: primary),
+                ),
+              )
+            else
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (material.status == MaterialStatus.error)
+                    IconButton(
+                      onPressed: () => _prepareMaterial(material, showSuccessMessage: true),
+                      icon: const Icon(Icons.refresh_rounded),
+                      tooltip: 'Try again',
+                    ),
+                  IconButton(
+                    onPressed: () => _deleteMaterial(material),
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    tooltip: 'Delete file',
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LibrarySpaceTile extends StatelessWidget {
+  const _LibrarySpaceTile({
+    required this.name,
+    required this.description,
+    required this.fileCount,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String name;
+  final String? description;
+  final int fileCount;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return ClinicalGlassCard(
+      onTap: onTap,
+      tint: selected
+                          ? (isDark ? theme.colorScheme.primary.withValues(alpha: 0.16) : theme.colorScheme.primary.withValues(alpha: 0.10))
+          : null,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: (selected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant).withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.class_outlined,
+                  size: 18,
+                  color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              if (preparing || deleting)
-                Padding(
-                  padding: const EdgeInsets.only(left: 8, top: 4),
-                  child: SizedBox.square(
-                    dimension: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: primary),
-                  ),
-                )
-              else
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (material.status == MaterialStatus.error)
-                      IconButton(
-                        onPressed: () => _prepareMaterial(material, showSuccessMessage: true),
-                        icon: const Icon(Icons.refresh_rounded),
-                        tooltip: 'Try again',
-                      ),
-                    IconButton(
-                      onPressed: () => _deleteMaterial(material),
-                      icon: const Icon(Icons.delete_outline),
-                      tooltip: 'Delete file',
-                    ),
-                  ],
-                ),
+              const Spacer(),
+              if (selected)
+                Icon(Icons.check_circle_rounded, size: 18, color: theme.colorScheme.primary),
             ],
           ),
-        ),
+          const Spacer(),
+          Text(
+            name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800, height: 1.2),
+          ),
+          if (description != null && description!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              description!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            '$fileCount file${fileCount == 1 ? '' : 's'}',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MaterialStatusPill extends StatelessWidget {
+  const _MaterialStatusPill({
+    required this.label,
+    required this.ready,
+    required this.failed,
+  });
+
+  final String label;
+  final bool ready;
+  final bool failed;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = ready
+        ? Colors.green.shade700
+        : failed
+            ? Colors.red.shade700
+            : Theme.of(context).colorScheme.onSurfaceVariant;
+    final bg = ready
+        ? Colors.green.withValues(alpha: 0.12)
+        : failed
+            ? Colors.red.withValues(alpha: 0.1)
+            : Theme.of(context).colorScheme.surfaceContainerHighest;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(LsRadii.pill),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700),
       ),
     );
   }

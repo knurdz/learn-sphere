@@ -1,25 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./config", () => ({
-  requiredServerEnv: vi.fn(() => "test-groq-key"),
-}));
+import { generateGroqText, GroqRateLimitError, parseGroqRetryDelayMs } from "./groq";
 
-import {
-  generateGroqText,
-  GroqRateLimitError,
-  parseGroqRetryDelayMs,
-} from "./groq";
-
-describe("Groq text generation", () => {
+describe("Foundry chat via groq compatibility exports", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
-    process.env.GROQ_CHAT_MODEL = "openai/gpt-oss-120b";
+    process.env.FOUNDRY_API_KEY = "test-foundry-key";
+    process.env.FOUNDRY_OPENAI_ENDPOINT = "https://example.openai.azure.com/openai/v1";
+    process.env.FOUNDRY_CHAT_MODEL = "gpt-4.1-mini";
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+    delete process.env.FOUNDRY_API_KEY;
+    delete process.env.FOUNDRY_OPENAI_ENDPOINT;
+    delete process.env.FOUNDRY_CHAT_MODEL;
   });
 
   it("parses retry delay from rate-limit messages", () => {
@@ -39,8 +36,7 @@ describe("Groq text generation", () => {
           return new Response(
             JSON.stringify({
               error: {
-                message:
-                  "Rate limit reached for model openai/gpt-oss-120b. Please try again in 1.5s.",
+                message: "Rate limit reached for model gpt-4.1-mini. Please try again in 1.5s.",
               },
             }),
             { status: 429 },
@@ -70,16 +66,16 @@ describe("Groq text generation", () => {
   it("throws a friendly rate-limit error after retries are exhausted", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({
-            error: {
-              message:
-                "Rate limit reached for model openai/gpt-oss-120b. Please try again in 0.01s.",
-            },
-          }),
-          { status: 429 },
-        ),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: {
+                message: "Rate limit reached for model gpt-4.1-mini. Please try again in 0.01s.",
+              },
+            }),
+            { status: 429 },
+          ),
       ),
     );
 

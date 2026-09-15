@@ -7,6 +7,8 @@ import '../l10n/app_localizations.dart';
 import '../models.dart';
 import '../repositories.dart';
 import '../settings_provider.dart';
+import '../theme.dart';
+import '../widgets/clinical_sections.dart';
 import '../widgets/live_tutor_chat_sheet.dart';
 import '../widgets/study_space_picker.dart';
 import 'live_tutor_call_screen.dart';
@@ -114,6 +116,7 @@ class LiveTutorPanelState extends ConsumerState<LiveTutorPanel> {
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Text(l10n.liveVoiceNotSupportedDialogTitle),
           content: Text(l10n.liveVoiceNotSupportedDialogBody),
           actions: [
@@ -166,11 +169,14 @@ class LiveTutorPanelState extends ConsumerState<LiveTutorPanel> {
     );
   }
 
-  String get _modeHint {
-    for (final entry in _sessionModes) {
-      if (entry.value == _mode) return entry.hint;
-    }
-    return '';
+  IconData _modeIcon(String value) {
+    return switch (value) {
+      'tutor' => Icons.videocam_rounded,
+      'video_create' => Icons.movie_creation_outlined,
+      'video_engage' => Icons.play_circle_outline,
+      'youtube_tutor' => Icons.play_circle_filled_outlined,
+      _ => Icons.tune_outlined,
+    };
   }
 
   @override
@@ -178,155 +184,124 @@ class LiveTutorPanelState extends ConsumerState<LiveTutorPanel> {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
 
-    return Column(
+    return ListView(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, islandNavClearance(context)),
       children: [
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        ClinicalGlassCard(
+          tint: theme.colorScheme.primary.withValues(alpha: theme.brightness == Brightness.dark ? 0.12 : 0.08),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const ClinicalSectionLabel('Live studio'),
+              const SizedBox(height: 10),
               Text(
-                'Step 1 · Choose your subject',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.2,
+                'Start a camera session',
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Your tutor joins on camera and teaches from your indexed material. Interrupt any time.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  height: 1.45,
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 18),
+              FilledButton(
+                onPressed: _busy ? null : _start,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(58),
+                  shape: const StadiumBorder(),
+                ),
+                child: _busy
+                    ? const SizedBox.square(
+                        dimension: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.videocam_rounded, size: 24),
+                          const SizedBox(width: 10),
+                          Text(l10n.startCameraSession, style: const TextStyle(fontWeight: FontWeight.w800)),
+                        ],
+                      ),
+              ),
+              const SizedBox(height: 10),
+              FilledButton.tonalIcon(
+                onPressed: _openChat,
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: Text(l10n.chatAndVoice),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  shape: const StadiumBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+              const SizedBox(height: 22),
+              const ClinicalSectionLabel('Subject'),
+              const SizedBox(height: 10),
               StudySpacePickerCard(
                 spaces: _spaces,
                 selectedId: _spaceId,
                 enabled: !_busy,
                 onSelected: (value) => setState(() => _spaceId = value),
               ),
-              const SizedBox(height: 28),
-              Text(
-                'Step 2 · Session type',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.2,
-                ),
+              const SizedBox(height: 22),
+              const ClinicalSectionLabel('Session type'),
+              const SizedBox(height: 10),
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 0.92,
+                children: [
+                  for (final mode in _sessionModes)
+                    ClinicalModeTile(
+                      label: mode.label,
+                      hint: mode.hint,
+                      icon: _modeIcon(mode.value),
+                      selected: _mode == mode.value,
+                      onTap: _busy ? () {} : () => setState(() => _mode = mode.value),
+                    ),
+                ],
               ),
-              const SizedBox(height: 14),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
+              if (_mode != 'tutor') ...[
+                const SizedBox(height: 16),
+                ClinicalGlassCard(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      DropdownButtonFormField<String>(
-                        key: ValueKey(_mode),
-                        initialValue: _mode,
+                      TextField(
+                        controller: _youtube,
+                        enabled: !_busy,
                         decoration: const InputDecoration(
-                          labelText: 'What do you want to do?',
-                          prefixIcon: Icon(Icons.tune_outlined),
+                          labelText: 'YouTube URL (optional)',
+                          prefixIcon: Icon(Icons.link),
                         ),
-                        items: _sessionModes
-                            .map(
-                              (mode) => DropdownMenuItem(
-                                value: mode.value,
-                                child: Text(mode.label),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: _busy ? null : (value) => setState(() => _mode = value ?? 'tutor'),
+                        keyboardType: TextInputType.url,
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _modeHint,
-                        style: theme.textTheme.bodySmall?.copyWith(color: Colors.blueGrey, height: 1.4),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _brief,
+                        enabled: !_busy,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: 'Lesson brief (optional)',
+                          alignLabelWithHint: true,
+                        ),
                       ),
-                      if (_mode != 'tutor') ...[
-                        const SizedBox(height: 14),
-                        TextField(
-                          controller: _youtube,
-                          enabled: !_busy,
-                          decoration: const InputDecoration(
-                            labelText: 'YouTube URL (optional)',
-                            prefixIcon: Icon(Icons.link),
-                          ),
-                          keyboardType: TextInputType.url,
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _brief,
-                          enabled: !_busy,
-                          maxLines: 3,
-                          decoration: const InputDecoration(
-                            labelText: 'Lesson brief (optional)',
-                            alignLabelWithHint: true,
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 28),
-              Text(
-                'Step 3 · Go live',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.2,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Your tutor joins on camera and teaches from your indexed material. Just talk — interrupt any time.',
-                style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
-              ),
-              const SizedBox(height: 18),
-              FilledButton(
-                onPressed: _busy ? null : _start,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(64),
-                  textStyle: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-                child: _busy
-                    ? const SizedBox.square(
-                        dimension: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.videocam_rounded, size: 28),
-                          const SizedBox(width: 12),
-                          Text(l10n.startCameraSession),
-                        ],
-                      ),
-              ),
+              ],
               if (_error != null) ...[
                 const SizedBox(height: 14),
                 Text(_error!, style: TextStyle(color: Colors.red.shade700)),
               ],
-              const SizedBox(height: 88),
-            ],
-          ),
-        ),
-        Material(
-          elevation: 8,
-          color: theme.scaffoldBackgroundColor,
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
-              child: FilledButton.tonalIcon(
-                onPressed: _openChat,
-                icon: const Icon(Icons.chat_bubble_outline),
-                label: Text(l10n.chatAndVoice),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                ),
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }

@@ -1,16 +1,17 @@
+import 'dart:async';
 import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
+import 'package:sensors_plus/sensors_plus.dart';
 
 import '../models.dart';
 import '../repositories.dart';
 import '../gamification_provider.dart';
 import '../settings_provider.dart';
-import '../widgets/app_header_actions.dart';
-import '../widgets/responsive_page.dart';
+import '../theme.dart';
+import '../widgets/coach_tour_scope.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n_ext.dart';
 
@@ -45,16 +46,16 @@ List<String> _memeCaptionLines(Map<String, dynamic> payload) {
       .toList();
 }
 
+/// Extra vertical inset so feed cards sit lower and breathe above bottom chrome.
+const _feedContentTopInset = 72.0;
+const _feedContentBottomExtra = 20.0;
+
 String _attemptFeedbackMessage({
   required bool correct,
-  String? explanation,
   String? correctAnswer,
   String? selectedAnswer,
 }) {
-  if (correct) {
-    final extra = explanation == null || explanation.isEmpty ? '' : ' — $explanation';
-    return 'Correct.$extra';
-  }
+  if (correct) return 'Correct.';
   final parts = <String>['Not quite.'];
   if (selectedAnswer != null && selectedAnswer.trim().isNotEmpty) {
     parts.add('Your answer: ${selectedAnswer.trim()}.');
@@ -62,10 +63,351 @@ String _attemptFeedbackMessage({
   if (correctAnswer != null && correctAnswer.trim().isNotEmpty) {
     parts.add('Answer: ${correctAnswer.trim()}.');
   }
-  if (explanation != null && explanation.trim().isNotEmpty) {
-    parts.add(explanation.trim());
-  }
   return parts.join(' ');
+}
+
+TextStyle _feedBaseStyle(
+  FeedWorldLook look, {
+  required double size,
+  FontWeight weight = FontWeight.w800,
+  double height = 1.28,
+}) {
+  return TextStyle(
+    color: look.ink,
+    fontSize: size,
+    fontWeight: weight,
+    height: height,
+    letterSpacing: -0.35,
+  );
+}
+
+List<InlineSpan> _accentSpans(
+  String text,
+  FeedWorldLook look, {
+  required double size,
+  FontWeight weight = FontWeight.w800,
+  double height = 1.28,
+  Color? color,
+}) {
+  final ink = color ?? look.ink;
+  final pop = color ?? look.seed;
+  final base = _feedBaseStyle(look, size: size, weight: weight, height: height).copyWith(color: ink);
+  final accent = base.copyWith(color: pop, fontWeight: FontWeight.w800);
+  final quote = base.copyWith(color: pop, fontStyle: FontStyle.italic, fontWeight: FontWeight.w700);
+  final number = base.copyWith(color: pop);
+  final pattern = RegExp(
+    r'"([^"]+)"|'
+    r"'([^']+)'|"
+    r'`([^`]+)`|'
+    r'(_{3,})|'
+    r'(\b\d+(?:\.\d+)?%?\b)|'
+    r'\b(What|Why|How|Which|When|Where|Who|True|False)\b',
+    caseSensitive: false,
+  );
+
+  final spans = <InlineSpan>[];
+  var cursor = 0;
+  for (final match in pattern.allMatches(text)) {
+    if (match.start > cursor) {
+      spans.add(TextSpan(text: text.substring(cursor, match.start), style: base));
+    }
+    if (match.group(4) != null) {
+      spans.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+            decoration: BoxDecoration(
+              color: look.seed.withValues(alpha: look.isDark ? 0.28 : 0.16),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: look.seed.withValues(alpha: 0.55)),
+            ),
+            child: Text(
+              '  ?  ',
+              style: TextStyle(color: look.seed, fontWeight: FontWeight.w900, fontSize: size * 0.72),
+            ),
+          ),
+        ),
+      );
+    } else if (match.group(5) != null) {
+      spans.add(TextSpan(text: match.group(0), style: number));
+    } else if (match.group(1) != null || match.group(2) != null || match.group(3) != null) {
+      final quoted = match.group(1) ?? match.group(2) ?? match.group(3)!;
+      spans.add(TextSpan(text: '“$quoted”', style: quote));
+    } else {
+      spans.add(TextSpan(text: match.group(0), style: accent));
+    }
+    cursor = match.end;
+  }
+  if (cursor < text.length) {
+    spans.add(TextSpan(text: text.substring(cursor), style: base));
+  }
+  if (spans.isEmpty) {
+    spans.add(TextSpan(text: text, style: base));
+  }
+  return spans;
+}
+
+class _FeedRichText extends StatelessWidget {
+  const _FeedRichText({
+    required this.text,
+    required this.fontSize,
+    this.weight = FontWeight.w800,
+    this.height = 1.28,
+    this.textAlign = TextAlign.start,
+    this.color,
+  });
+
+  final String text;
+  final double fontSize;
+  final FontWeight weight;
+  final double height;
+  final TextAlign textAlign;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final look = FeedWorldLook.of(context);
+    return Text.rich(
+      TextSpan(children: _accentSpans(text, look, size: fontSize, weight: weight, height: height, color: color)),
+      textAlign: textAlign,
+    );
+  }
+}
+
+class _KindChip extends StatelessWidget {
+  const _KindChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final look = FeedWorldLook.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: look.seed.withValues(alpha: look.isDark ? 0.28 : 0.16),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: look.seed),
+          const SizedBox(width: 6),
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              color: look.seed,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StudyTextCard extends StatelessWidget {
+  const _StudyTextCard({
+    required this.icon,
+    required this.label,
+    required this.child,
+    this.showQuote = false,
+    this.onLongPress,
+  });
+
+  final IconData icon;
+  final String label;
+  final Widget child;
+  final bool showQuote;
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final look = FeedWorldLook.of(context);
+    return GestureDetector(
+      onLongPress: onLongPress,
+      child: Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.lerp(look.sheet, look.seed, look.isDark ? 0.22 : 0.10)!,
+            look.sheet,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: look.seed.withValues(alpha: 0.32), width: 1.4),
+        boxShadow: [
+          BoxShadow(
+            color: look.seed.withValues(alpha: look.isDark ? 0.22 : 0.12),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: Stack(
+          children: [
+            Positioned(
+              top: -18,
+              right: 8,
+              child: Icon(
+                showQuote ? Icons.format_quote_rounded : Icons.auto_awesome,
+                size: 92,
+                color: look.seed.withValues(alpha: look.isDark ? 0.16 : 0.12),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _KindChip(icon: icon, label: label),
+                  const SizedBox(height: 14),
+                  child,
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      ),
+    );
+  }
+}
+
+class FeedWorldLook {
+  const FeedWorldLook({
+    required this.isDark,
+    required this.seed,
+    required this.canvas,
+    required this.ink,
+    required this.muted,
+    required this.glass,
+    required this.glassStrong,
+    required this.glassBorder,
+    required this.sheet,
+    required this.dropdown,
+    required this.ctaBackground,
+    required this.ctaForeground,
+    required this.vignette,
+    required this.floor,
+  });
+
+  final bool isDark;
+  final Color seed;
+  final Color canvas;
+  final Color ink;
+  final Color muted;
+  final Color glass;
+  final Color glassStrong;
+  final Color glassBorder;
+  final Color sheet;
+  final Color dropdown;
+  final Color ctaBackground;
+  final Color ctaForeground;
+  final Color vignette;
+  final Color floor;
+
+  factory FeedWorldLook.of(BuildContext context) {
+    final theme = Theme.of(context);
+    return FeedWorldLook.fromSeed(theme.colorScheme.primary, theme.brightness);
+  }
+
+  factory FeedWorldLook.fromSeed(Color seed, Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+    if (isDark) {
+      final canvas = FeedWorld.canvasFor(brightness, seed);
+      return FeedWorldLook(
+        isDark: true,
+        seed: seed,
+        canvas: canvas,
+        ink: Colors.white,
+        muted: Color.lerp(const Color(0xFFB9B6C8), seed, 0.18)!,
+        glass: seed.withValues(alpha: 0.20),
+        glassStrong: seed.withValues(alpha: 0.32),
+        glassBorder: Colors.white.withValues(alpha: 0.18),
+        sheet: Color.lerp(const Color(0xFF14141E), seed, 0.16)!,
+        dropdown: Color.lerp(const Color(0xFF161622), seed, 0.18)!,
+        ctaBackground: seed,
+        ctaForeground: Colors.white,
+        vignette: const Color(0x99000000),
+        floor: Color.lerp(const Color(0xFF050508), seed, 0.22)!,
+      );
+    }
+    final canvas = FeedWorld.canvasFor(brightness, seed);
+    return FeedWorldLook(
+      isDark: false,
+      seed: seed,
+      canvas: canvas,
+      ink: const Color(0xFF16141C),
+      muted: Color.lerp(const Color(0xFF5C5668), seed, 0.12)!,
+      glass: seed.withValues(alpha: 0.12),
+      glassStrong: seed.withValues(alpha: 0.22),
+      glassBorder: seed.withValues(alpha: 0.24),
+      sheet: Color.lerp(Colors.white, seed, 0.05)!,
+      dropdown: Color.lerp(Colors.white, seed, 0.05)!,
+      ctaBackground: seed,
+      ctaForeground: Colors.white,
+      vignette: seed.withValues(alpha: 0.16),
+      floor: canvas,
+    );
+  }
+}
+
+ThemeData _feedTheme(FeedWorldLook look) {
+  final brightness = look.isDark ? Brightness.dark : Brightness.light;
+  return ThemeData(
+    brightness: brightness,
+    useMaterial3: true,
+    colorScheme: ColorScheme(
+      brightness: brightness,
+      primary: look.seed,
+      onPrimary: look.ctaForeground,
+      secondary: look.ink,
+      onSecondary: look.canvas,
+      error: const Color(0xFFB91C1C),
+      onError: Colors.white,
+      surface: look.canvas,
+      onSurface: look.ink,
+      onSurfaceVariant: look.muted,
+    ),
+    scaffoldBackgroundColor: look.canvas,
+    chipTheme: ChipThemeData(
+      backgroundColor: look.glass,
+      selectedColor: look.glassStrong,
+      labelStyle: TextStyle(color: look.ink, fontWeight: FontWeight.w700, fontSize: 12),
+      side: BorderSide.none,
+      shape: const StadiumBorder(),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: look.glass,
+      hintStyle: TextStyle(color: look.muted),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(20),
+        borderSide: BorderSide(color: look.ink.withValues(alpha: 0.35)),
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: look.ctaBackground,
+        foregroundColor: look.ctaForeground,
+        shape: const StadiumBorder(),
+      ),
+    ),
+  );
 }
 
 class FeedScreen extends ConsumerStatefulWidget {
@@ -91,7 +433,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   bool _hasLibraryMaterials = false;
   bool _hasReadyMaterials = false;
   bool _hasAnyFeedItems = false;
-  final _scrollController = ScrollController();
+  final _pageController = PageController();
 
   StudyRepository get repository => ref.read(studyRepositoryProvider);
 
@@ -112,22 +454,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   void initState() {
     super.initState();
     _load();
-    _scrollController.addListener(_onScroll);
-  }
-
-  void _onScroll() {
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 500) {
-      if (_nextCursor != null) {
-        _loadMore();
-      } else {
-        _generateMore();
-      }
-    }
   }
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -215,80 +546,71 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         cursor: cursor,
       );
       if (!mounted) return;
-      final known = _items.map((item) => item.id).toSet();
+      final additions = page.items.where((addition) => !_items.any((existing) => existing.id == addition.id)).toList();
+      sortFeedItems(additions);
       setState(() {
-        _items = [..._items, ...page.items.where((item) => !known.contains(item.id))];
+        _items = [..._items, ...additions];
         _nextCursor = page.nextCursor;
+        if (additions.isEmpty && page.nextCursor == null) {
+          _exhausted = true;
+        }
       });
     } catch (_) {
-      // Keep scrolling with what we already have.
+      // Keep state intact
     } finally {
       if (mounted) setState(() => _loadingMore = false);
     }
   }
 
-  Future<void> _changeFilter({String? spaceId, String? kind}) async {
-    setState(() {
-      if (spaceId != null) _spaceId = spaceId;
-      if (kind != null) _kind = kind;
-    });
-    _resetScroll();
-    await _load();
-  }
-
-  void _setCompletionFilter(String value) {
-    if (_completionFilter == value) return;
-    setState(() => _completionFilter = value);
-    _resetScroll();
-  }
-
-  void _resetScroll() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
-      _scrollController.jumpTo(0);
-    });
-  }
-
-  void _maybeGenerateSparseKind() {
-    if (_kind != 'fill_blank' && _kind != 'true_false') return;
-    final unlearned = _items.where((item) => !item.progress.completed).length;
-    if (unlearned <= 1) {
-      _generateMore();
-    }
-  }
-
-  /// Keeps the feed going once stored cards run out by asking the bridge for
-  /// cards on concepts that do not have any yet.
   Future<void> _generateMore() async {
-    if (_generating || _busy || _exhausted || !_hasReadyMaterials) return;
+    if (_generating || _busy || !_hasReadyMaterials || !_kindSupportsGeneration(_kind) || _exhausted) return;
     setState(() => _generating = true);
     try {
       final created = await repository.generateMoreFeed(
         spaceId: _spaceId.isEmpty ? null : _spaceId,
         kind: _kind,
       );
-      if (created == 0) {
-        if (mounted) setState(() => _exhausted = true);
-        return;
-      }
+      if (!mounted || created <= 0) return;
       final page = await repository.feedPage(
         spaceId: _spaceId.isEmpty ? null : _spaceId,
         kind: _kind,
       );
       if (!mounted) return;
-      final known = _items.map((item) => item.id).toSet();
-      final additions = page.items.where((item) => !known.contains(item.id)).toList();
-      if (additions.isEmpty) {
-        setState(() => _exhausted = true);
-        return;
-      }
-      sortFeedItems(additions);
-      setState(() => _items = [..._items, ...additions]);
+      sortFeedItems(page.items);
+      setState(() => _items = page.items);
     } catch (_) {
-      // Leave the reader on the cards they already have.
     } finally {
       if (mounted) setState(() => _generating = false);
     }
+  }
+
+  void _resetScroll() {
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(0);
+    }
+  }
+
+  void _maybeGenerateSparseKind() {
+    if (!_busy && _items.length < 3 && _hasReadyMaterials && _kindSupportsGeneration(_kind) && !_exhausted) {
+      _generateMore();
+    }
+  }
+
+  void _changeFilter({String? spaceId, String? kind}) {
+    final nextSpace = spaceId ?? _spaceId;
+    final nextKind = kind ?? _kind;
+    if (nextSpace == _spaceId && nextKind == _kind) return;
+    setState(() {
+      if (spaceId != null) _spaceId = spaceId;
+      if (kind != null) _kind = kind;
+    });
+    _load();
+  }
+
+  void _setCompletionFilter(String value) {
+    if (_completionFilter == value) return;
+    setState(() => _completionFilter = value);
+    _resetScroll();
   }
 
   void _applyProgress(String itemId, Progress progress) {
@@ -302,16 +624,29 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _header(context),
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: _load,
-            child: _content(context),
+    final seed = Color(ref.watch(settingsProvider).colorTheme);
+    final look = FeedWorldLook.fromSeed(seed, Theme.of(context).brightness);
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: look.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+      child: Theme(
+        data: _feedTheme(look),
+        child: ColoredBox(
+          color: look.canvas,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fill(child: _content(context)),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: _floatingHeader(context),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -362,7 +697,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.filter_alt_off_outlined, size: 42, color: Theme.of(context).colorScheme.primary),
+            const Icon(Icons.filter_alt_off_outlined, size: 42),
             const SizedBox(height: 10),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 12),
@@ -375,51 +710,62 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       );
     }
     return Stack(
+      fit: StackFit.expand,
       children: [
-        Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: AppBreakpoints.feedCardMaxWidth),
-            child: ListView.builder(
-              controller: _scrollController,
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.only(bottom: 80),
-              itemCount: filteredItems.length,
-              itemBuilder: (context, index) => Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                child: FeedCard(
-                  key: ValueKey(filteredItems[index].id),
-                  item: filteredItems[index],
-                  onProgress: _applyProgress,
-                ),
-              ),
-            ),
+        PageView.builder(
+          controller: _pageController,
+          scrollDirection: Axis.vertical,
+          pageSnapping: true,
+          allowImplicitScrolling: true,
+          physics: const PageScrollPhysics(),
+          itemCount: filteredItems.length,
+          onPageChanged: (index) {
+            if (index >= filteredItems.length - 2) {
+              if (_nextCursor != null) {
+                _loadMore();
+              } else {
+                _generateMore();
+              }
+            }
+          },
+          itemBuilder: (context, index) => FeedCard(
+            key: ValueKey(filteredItems[index].id),
+            item: filteredItems[index],
+            onProgress: _applyProgress,
           ),
         ),
         if (_loadingMore || _generating)
           Positioned(
             left: 0,
             right: 0,
-            bottom: 6,
+            bottom: islandNavClearance(context) + 12,
             child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(999),
-                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2)),
-                    const SizedBox(width: 10),
-                    Text(
-                      _generating ? l10n.creatingNewCards : l10n.loadingMore,
-                      style: Theme.of(context).textTheme.bodySmall,
+              child: Builder(
+                builder: (context) {
+                  final look = FeedWorldLook.of(context);
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: look.sheet.withValues(alpha: 0.92),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: look.glassBorder),
                     ),
-                  ],
-                ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox.square(
+                          dimension: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: look.ink),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          _generating ? l10n.creatingNewCards : l10n.loadingMore,
+                          style: TextStyle(color: look.ink, fontWeight: FontWeight.w600, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
           ),
@@ -439,86 +785,72 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     );
   }
 
-  Widget _header(BuildContext context) {
-    final theme = Theme.of(context);
+  Widget _floatingHeader(BuildContext context) {
+    final look = FeedWorldLook.of(context);
     final l10n = AppLocalizations.of(context)!;
     final feedKinds = localizedFeedKinds(l10n);
+
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, MediaQuery.paddingOf(context).top + 14, 20, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: EdgeInsets.fromLTRB(12, MediaQuery.paddingOf(context).top + 6, 12, 0),
+      child: Row(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Feed',
-                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const AppHeaderActions(),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Review your study cards.',
-            style: theme.textTheme.bodyMedium?.copyWith(color: Colors.blueGrey, height: 1.45),
-          ),
-          const SizedBox(height: 16),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                if (_spaces.isNotEmpty) ...[
-                  Container(
-                    height: 36,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.3)),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _spaceId,
-                        isDense: true,
-                        icon: const Icon(Icons.arrow_drop_down, size: 20),
-                        style: theme.textTheme.bodyMedium,
-                        items: [
-                          const DropdownMenuItem(value: '', child: Text('All subjects')),
-                          ..._spaces.map((space) => DropdownMenuItem(value: space.id, child: Text(space.name))),
-                        ],
-                        onChanged: (value) => _changeFilter(spaceId: value ?? ''),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  if (_spaces.isNotEmpty) ...[
+                    Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: look.glass,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _spaceId,
+                          isDense: true,
+                          dropdownColor: look.dropdown,
+                          icon: Icon(Icons.arrow_drop_down, size: 18, color: look.ink),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                            color: look.ink,
+                          ),
+                          items: [
+                            const DropdownMenuItem(value: '', child: Text('All subjects')),
+                            ..._spaces.map((space) => DropdownMenuItem(value: space.id, child: Text(space.name))),
+                          ],
+                          onChanged: (value) => _changeFilter(spaceId: value ?? ''),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
+                    const SizedBox(width: 8),
+                  ],
+                  ...feedKinds.map((filter) => Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(filter.label, style: const TextStyle(fontSize: 12)),
+                      selected: _kind == filter.value,
+                      onSelected: (_) => _changeFilter(kind: filter.value),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  )),
                 ],
-                ...feedKinds.map((filter) => Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(filter.label),
-                    selected: _kind == filter.value,
-                    onSelected: (_) => _changeFilter(kind: filter.value),
-                  ),
-                )),
-                const SizedBox(width: 4),
-                ChoiceChip(
-                  label: const Text('All'),
-                  selected: _completionFilter == 'all',
-                  onSelected: (_) => _setCompletionFilter('all'),
-                ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('Unlearned'),
-                  selected: _completionFilter == 'unlearned',
-                  onSelected: (_) => _setCompletionFilter('unlearned'),
-                ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('Learned'),
-                  selected: _completionFilter == 'learned',
-                  onSelected: (_) => _setCompletionFilter('learned'),
-                ),
-              ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Material(
+            color: look.glass,
+            shape: const CircleBorder(),
+            child: IconButton(
+              key: CoachTourScope.targetKey(context, 'settings'),
+              onPressed: () => context.push('/settings'),
+              icon: Icon(Icons.settings_outlined, color: look.ink),
+              tooltip: 'Settings',
+              visualDensity: VisualDensity.compact,
             ),
           ),
         ],
@@ -539,7 +871,10 @@ class FeedCard extends ConsumerStatefulWidget {
 
 class _FeedCardState extends ConsumerState<FeedCard> {
   final _answerController = TextEditingController();
+  final ValueNotifier<Offset> _parallaxOffset = ValueNotifier(Offset.zero);
+  StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
   String? _result;
+  String? _explanation;
   bool _correct = false;
   bool _busy = false;
   bool _showFlashcardBack = false;
@@ -555,6 +890,15 @@ class _FeedCardState extends ConsumerState<FeedCard> {
   void initState() {
     super.initState();
     _syncFromProgress();
+    _accelerometerSubscription = accelerometerEventStream(
+      samplingPeriod: const Duration(milliseconds: 100),
+    ).listen((event) {
+      if (!mounted) return;
+      _parallaxOffset.value = Offset(
+        (-event.x / 9.81 * 10).clamp(-10.0, 10.0),
+        (-event.y / 9.81 * 10).clamp(-10.0, 10.0),
+      );
+    });
   }
 
   @override
@@ -567,6 +911,7 @@ class _FeedCardState extends ConsumerState<FeedCard> {
 
   void _syncFromProgress() {
     _result = null;
+    _explanation = null;
     _correct = false;
     _selectedOption = null;
     _correctOptionIndex = null;
@@ -583,8 +928,9 @@ class _FeedCardState extends ConsumerState<FeedCard> {
         }
         _result = _attemptFeedbackMessage(
           correct: _correct,
-          explanation: item.progress.explanation,
         );
+        _explanation = item.progress.explanation?.trim();
+        if (_explanation != null && _explanation!.isEmpty) _explanation = null;
       }
       return;
     }
@@ -597,10 +943,11 @@ class _FeedCardState extends ConsumerState<FeedCard> {
         _correct = (item.progress.lastScore ?? 0) >= 100;
         _result = _attemptFeedbackMessage(
           correct: _correct,
-          explanation: item.progress.explanation,
           correctAnswer: item.progress.fillBlankCorrectAnswer,
           selectedAnswer: _correct ? null : item.progress.fillBlankSelectedAnswer,
         );
+        _explanation = item.progress.explanation?.trim();
+        if (_explanation != null && _explanation!.isEmpty) _explanation = null;
       }
       return;
     }
@@ -618,9 +965,10 @@ class _FeedCardState extends ConsumerState<FeedCard> {
             : (item.progress.trueFalseCorrect! ? 'True' : 'False');
         _result = _attemptFeedbackMessage(
           correct: _correct,
-          explanation: item.progress.explanation,
           correctAnswer: answerLabel == null ? null : 'The statement is $answerLabel.',
         );
+        _explanation = item.progress.explanation?.trim();
+        if (_explanation != null && _explanation!.isEmpty) _explanation = null;
       }
       return;
     }
@@ -628,6 +976,8 @@ class _FeedCardState extends ConsumerState<FeedCard> {
 
   @override
   void dispose() {
+    _accelerometerSubscription?.cancel();
+    _parallaxOffset.dispose();
     _answerController.dispose();
     super.dispose();
   }
@@ -639,6 +989,7 @@ class _FeedCardState extends ConsumerState<FeedCard> {
       if (!mounted) return;
       setState(() {
         _result = null;
+        _explanation = null;
         _correct = true;
       });
       widget.onProgress(item.id, Progress(completedAt: DateTime.now(), lastScore: item.progress.lastScore));
@@ -671,7 +1022,6 @@ class _FeedCardState extends ConsumerState<FeedCard> {
         _correctOptionIndex = correctIndex ?? _correctOptionIndex;
         _result = _attemptFeedbackMessage(
           correct: correct,
-          explanation: explanation,
           correctAnswer: item.kind == 'fill_blank'
               ? (fillBlankCorrect.isEmpty ? null : fillBlankCorrect)
               : item.kind == 'true_false' && trueFalseCorrect != null
@@ -681,6 +1031,7 @@ class _FeedCardState extends ConsumerState<FeedCard> {
               ? _answerController.text.trim()
               : null,
         );
+        _explanation = explanation.isEmpty ? null : explanation;
       });
       final selectedText = item.kind == 'fill_blank' ? _answerController.text.trim() : null;
       widget.onProgress(
@@ -705,6 +1056,7 @@ class _FeedCardState extends ConsumerState<FeedCard> {
         setState(() {
           _correct = false;
           _result = '$error';
+          _explanation = null;
         });
       }
     } finally {
@@ -728,6 +1080,133 @@ class _FeedCardState extends ConsumerState<FeedCard> {
     return _submitAttempt(value);
   }
 
+  void _showExplanationSheet() {
+    final explanation = _explanation;
+    if (explanation == null || explanation.isEmpty) return;
+    final look = FeedWorldLook.of(context);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: look.sheet,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      builder: (context) => Theme(
+        data: _feedTheme(look),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + MediaQuery.paddingOf(context).bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: look.glassBorder,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Icon(
+                    _correct ? Icons.lightbulb_outline : Icons.menu_book_outlined,
+                    color: look.seed,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    _correct ? 'Why this is right' : 'Why this is wrong',
+                    style: TextStyle(
+                      color: look.ink,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _FeedRichText(
+                text: explanation,
+                fontSize: 16,
+                weight: FontWeight.w600,
+                height: 1.45,
+              ),
+              const SizedBox(height: 20),
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Got it'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showSourceDialog(BuildContext context) {
+    final look = FeedWorldLook.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: look.sheet,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      builder: (context) => Theme(
+        data: _feedTheme(look),
+        child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: look.glassBorder,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              'From your library',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.4,
+                color: look.seed,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              item.title,
+              style: TextStyle(color: look.ink, fontWeight: FontWeight.w800, fontSize: 18, height: 1.25),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              item.studySpaceName,
+              style: TextStyle(color: look.muted),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'This card was built from your materials in ${item.studySpaceName}.',
+              style: TextStyle(color: look.muted, height: 1.45),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ),
+          ],
+        ),
+        ),
+      ),
+    );
+  }
+
   Widget _body(BuildContext context) {
     final payload = item.payload;
     switch (item.kind) {
@@ -737,53 +1216,68 @@ class _FeedCardState extends ConsumerState<FeedCard> {
           back: _payloadString(payload, 'back') ?? 'This card has no answer yet.',
           flipped: _showFlashcardBack,
           onFlip: () => setState(() => _showFlashcardBack = !_showFlashcardBack),
-          onLightPanel: true,
         );
       case 'did_you_know':
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _payloadString(payload, 'headline') ?? item.title,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w800, height: 1.25),
-            ),
-            if (_payloadString(payload, 'fact') != null) ...[
-              const SizedBox(height: 16),
-              Text(
-                _payloadString(payload, 'fact')!,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white.withValues(alpha: 0.92), height: 1.5),
+        final look = FeedWorldLook.of(context);
+        final style = feedKindStyle(item.kind, isDark: look.isDark, seed: look.seed);
+        final fact = _payloadString(payload, 'fact');
+        return _StudyTextCard(
+          icon: style.icon,
+          label: 'Study tip',
+          showQuote: true,
+          onLongPress: () => _showSourceDialog(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _FeedRichText(
+                text: _payloadString(payload, 'headline') ?? item.title,
+                fontSize: 24,
+                height: 1.22,
               ),
+              if (fact != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: look.seed.withValues(alpha: look.isDark ? 0.16 : 0.08),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: _FeedRichText(
+                    text: fact,
+                    fontSize: 16,
+                    weight: FontWeight.w600,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+              if (_payloadString(payload, 'concept') != null) ...[
+                const SizedBox(height: 12),
+                _Pill(text: _payloadString(payload, 'concept')!),
+              ],
             ],
-            if (_payloadString(payload, 'concept') != null) ...[
-              const SizedBox(height: 18),
-              _Pill(text: _payloadString(payload, 'concept')!),
-            ],
-          ],
+          ),
         );
       case 'meme':
-        final meme = item.meme;
-        if (meme != null && meme.imageUrl.isNotEmpty) {
-          return ClipRRect(borderRadius: BorderRadius.circular(16), child: _MemeImage(meme: meme));
-        }
         final captions = _memeCaptionLines(payload);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (captions.isEmpty)
-              Text('This meme has no captions yet.', style: TextStyle(color: Colors.white.withValues(alpha: 0.8)))
+              Text('This meme has no captions yet.', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8)))
             else
               ...captions.map(
                 (line) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: Text(line, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white, height: 1.4)),
+                  child: Text(line, style: Theme.of(context).textTheme.titleMedium?.copyWith(height: 1.4)),
                 ),
               ),
           ],
         );
       case 'true_false':
-        return _prompt(context, _payloadString(payload, 'statement') ?? item.title, onLightPanel: _cleanStudyLayout);
+        return _prompt(context, _payloadString(payload, 'statement') ?? item.title);
       case 'quiz':
-        return _prompt(context, _payloadString(payload, 'question') ?? item.title, onLightPanel: _cleanStudyLayout);
+        return _prompt(context, _payloadString(payload, 'question') ?? item.title);
       case 'fill_blank':
         return _prompt(context, _payloadString(payload, 'prompt') ?? item.title);
       default:
@@ -792,20 +1286,15 @@ class _FeedCardState extends ConsumerState<FeedCard> {
     }
   }
 
-  Widget _prompt(BuildContext context, String text, {bool onLightPanel = false}) => Text(
-        text,
-        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: onLightPanel ? Theme.of(context).colorScheme.onSurface : Colors.white,
-              fontWeight: FontWeight.w700,
-              height: 1.35,
-            ),
-      );
-
-  bool get _cleanStudyLayout {
-    final tone = ref.watch(settingsProvider).cardTone;
-    if (tone == AppCardTone.single) return true;
-    if (tone == AppCardTone.colorful) return false;
-    return item.kind == 'quiz' || item.kind == 'flashcard' || item.kind == 'true_false';
+  Widget _prompt(BuildContext context, String text) {
+    final look = FeedWorldLook.of(context);
+    final style = feedKindStyle(item.kind, isDark: look.isDark, seed: look.seed);
+    return _StudyTextCard(
+      icon: style.icon,
+      label: style.label,
+      onLongPress: () => _showSourceDialog(context),
+      child: _FeedRichText(text: text, fontSize: 22, height: 1.32),
+    );
   }
 
   _OptionFeedbackState _feedbackForTrueFalse(bool value) {
@@ -830,156 +1319,143 @@ class _FeedCardState extends ConsumerState<FeedCard> {
     return _OptionFeedbackState.none;
   }
 
-  Widget _buildStudyPanelContent(List<String> options) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _body(context),
-        if (item.kind == 'quiz' && options.isNotEmpty) ...[
-          const SizedBox(height: 22),
-          ...options.asMap().entries.map(
-                (entry) => _OptionTile(
-                  label: entry.value,
-                  index: entry.key,
-                  selected: _selectedOption == entry.key,
-                  feedbackState: _feedbackForOption(entry.key),
-                  onTap: (_busy || _attemptLocked) ? null : () => setState(() => _selectedOption = entry.key),
-                  onLightPanel: true,
-                ),
-              ),
-        ],
-        if (item.kind == 'true_false') ...[
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: _StudyPollButton(
-                  label: 'True',
-                  icon: Icons.check_rounded,
-                  accent: const Color(0xFF047857),
-                  selected: _selectedTrueFalse == true,
-                  feedbackState: _feedbackForTrueFalse(true),
-                  onPressed: (_busy || _attemptLocked) ? null : () => _submitTrueFalse(true),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _StudyPollButton(
-                  label: 'False',
-                  icon: Icons.close_rounded,
-                  accent: const Color(0xFFB45309),
-                  selected: _selectedTrueFalse == false,
-                  feedbackState: _feedbackForTrueFalse(false),
-                  onPressed: (_busy || _attemptLocked) ? null : () => _submitTrueFalse(false),
-                ),
-              ),
-            ],
-          ),
-        ],
-        if (_result != null) ...[
-          const SizedBox(height: 18),
-          _FeedbackBanner(correct: _correct, message: _result!),
-        ],
-      ],
-    );
-  }
+  Widget _buildStudyPanelContent(
+    List<String> options, {
+    required bool showCheck,
+    required VoidCallback? onCheck,
+  }) {
+    final look = FeedWorldLook.of(context);
+    final isInteractive = item.kind == 'quiz' || item.kind == 'true_false' || item.kind == 'fill_blank';
 
-  Widget _buildScrollableBody(List<String> options) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _body(context),
-        if (item.kind == 'quiz' && options.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          ...options.asMap().entries.map(
-                (entry) => _OptionTile(
-                  label: entry.value,
-                  index: entry.key,
-                  selected: _selectedOption == entry.key,
-                  feedbackState: _feedbackForOption(entry.key),
-                  onTap: (_busy || _attemptLocked) ? null : () => setState(() => _selectedOption = entry.key),
-                ),
-              ),
-        ],
-        if (item.kind == 'true_false') ...[
-          const SizedBox(height: 22),
-          Row(
-            children: [
-              Expanded(
-                child: _ChoiceButton(
-                  label: 'True',
-                  icon: Icons.thumb_up_outlined,
-                  selected: _selectedTrueFalse == true,
-                  feedbackState: _feedbackForTrueFalse(true),
-                  onPressed: (_busy || _attemptLocked) ? null : () => _submitTrueFalse(true),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _ChoiceButton(
-                  label: 'False',
-                  icon: Icons.thumb_down_outlined,
-                  selected: _selectedTrueFalse == false,
-                  feedbackState: _feedbackForTrueFalse(false),
-                  onPressed: (_busy || _attemptLocked) ? null : () => _submitTrueFalse(false),
-                ),
+    Widget answers() {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 16),
+          _body(context),
+          if (item.kind == 'quiz' && options.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            for (var i = 0; i < options.length; i++) ...[
+              if (i > 0) const SizedBox(height: 10),
+              _OptionTile(
+                label: options[i],
+                index: i,
+                selected: _selectedOption == i,
+                feedbackState: _feedbackForOption(i),
+                onTap: (_busy || _attemptLocked) ? null : () => setState(() => _selectedOption = i),
               ),
             ],
-          ),
-        ],
-        if (item.kind == 'fill_blank') ...[
-          const SizedBox(height: 18),
-          TextField(
-            controller: _answerController,
-            enabled: !_busy && !_attemptLocked,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-            cursorColor: Colors.white,
-            onSubmitted: (_busy || _attemptLocked) ? null : (_) => _submitAnswer(),
-            decoration: InputDecoration(
-              hintText: 'Type the missing word',
-              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
-              filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.16),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.28)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Colors.white),
+          ],
+          if (item.kind == 'true_false') ...[
+            const SizedBox(height: 24),
+            SizedBox(
+              height: 128,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: _StudyPollButton(
+                      label: 'True',
+                      icon: Icons.check_rounded,
+                      accent: const Color(0xFF047857),
+                      selected: _selectedTrueFalse == true,
+                      feedbackState: _feedbackForTrueFalse(true),
+                      onPressed: (_busy || _attemptLocked) ? null : () => _submitTrueFalse(true),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _StudyPollButton(
+                      label: 'False',
+                      icon: Icons.close_rounded,
+                      accent: const Color(0xFFB45309),
+                      selected: _selectedTrueFalse == false,
+                      feedbackState: _feedbackForTrueFalse(false),
+                      onPressed: (_busy || _attemptLocked) ? null : () => _submitTrueFalse(false),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
-        if (_result != null) ...[
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(_correct ? Icons.check_circle_outline : Icons.info_outline, color: Colors.white, size: 20),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(_result!, style: const TextStyle(color: Colors.white, height: 1.4)),
+          ],
+          if (item.kind == 'fill_blank') ...[
+            const SizedBox(height: 28),
+            TextField(
+              controller: _answerController,
+              enabled: !_busy && !_attemptLocked,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: look.ink, fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: 0.2),
+              onSubmitted: (_busy || _attemptLocked) ? null : (_) => _submitAnswer(),
+              decoration: InputDecoration(
+                hintText: 'Type the missing word',
+                hintStyle: TextStyle(color: look.muted, fontWeight: FontWeight.w600, fontSize: 16),
+                filled: true,
+                fillColor: look.sheet,
+                contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(22),
+                  borderSide: BorderSide(color: look.glassBorder),
                 ),
-              ],
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(22),
+                  borderSide: BorderSide(color: look.glassBorder),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(22),
+                  borderSide: BorderSide(color: look.seed, width: 2),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+        ],
+      );
+    }
+
+    if (!isInteractive) {
+      return Center(
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: _body(context),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: answers(),
+          ),
+        ),
+        if (_result != null) ...[
+          _FeedbackBanner(
+            correct: _correct,
+            message: _result!,
+            onExplain: _explanation != null && _explanation!.isNotEmpty ? _showExplanationSheet : null,
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (showCheck)
+          SizedBox(
+            height: 48,
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: onCheck,
+              child: const Text('Check answer', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             ),
           ),
-        ],
       ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final style = feedKindStyle(item.kind);
+    final look = FeedWorldLook.of(context);
+    final style = feedKindStyle(item.kind, isDark: look.isDark, seed: look.seed);
     final options = item.payload['options'] is List
         ? (item.payload['options'] as List).map((value) => '$value').toList()
         : const <String>[];
@@ -988,123 +1464,203 @@ class _FeedCardState extends ConsumerState<FeedCard> {
         ? (_busy ? null : _submitAnswer)
         : (item.progress.completed ? null : _markLearned);
 
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final isClean = _cleanStudyLayout;
-    
-    final mutedTextColor = isClean ? (isDark ? Colors.white70 : const Color(0xFF64748B)) : Colors.white.withValues(alpha: 0.7);
-    final iconColor = isClean ? theme.colorScheme.primary : Colors.white;
+    final chromeBottom = islandNavClearance(context) + _feedContentBottomExtra;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(26),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isClean
-              ? [theme.cardTheme.color ?? Colors.white, theme.cardTheme.color ?? Colors.white]
-              : style.gradient,
-        ),
-        border: isClean ? Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.2)) : null,
-        boxShadow: [
-          BoxShadow(
-            color: (isClean ? Colors.black : style.gradient.last).withValues(alpha: isClean ? (isDark ? 0.2 : 0.06) : 0.28),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
+    return SizedBox.expand(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    style.gradient[0],
+                    style.gradient[1],
+                    look.floor,
+                  ],
+                  stops: const [0.0, 0.42, 1.0],
+                ),
+              ),
+            ),
           ),
+          Positioned.fill(
+            child: ValueListenableBuilder<Offset>(
+              valueListenable: _parallaxOffset,
+              builder: (context, offset, child) => Transform.translate(
+                offset: offset,
+                child: Transform.scale(scale: 1.08, child: child),
+              ),
+              child: CustomPaint(
+                painter: _FeedWorldPainter(accent: style.gradient[0], look: look),
+              ),
+            ),
+          ),
+          if (item.kind == 'meme' && item.meme != null && item.meme!.imageUrl.isNotEmpty)
+            Positioned.fill(child: _MemeImage(meme: item.meme!))
+          else
+            Positioned.fill(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  MediaQuery.paddingOf(context).top + _feedContentTopInset,
+                  16,
+                  chromeBottom,
+                ),
+                child: item.kind == 'flashcard'
+                    ? _FlashCard(
+                        front: _payloadString(item.payload, 'front') ?? item.title,
+                        back: _payloadString(item.payload, 'back') ?? 'This card has no answer yet.',
+                        flipped: _showFlashcardBack,
+                        onFlip: () => setState(() => _showFlashcardBack = !_showFlashcardBack),
+                      )
+                    : _buildStudyPanelContent(
+                        options,
+                        showCheck: needsCheckButton,
+                        onCheck: primaryAction,
+                      ),
+              ),
+            ),
+          if (item.kind != 'meme')
+            Positioned(
+              right: 16,
+              bottom: aboveIslandNav(context),
+              child: _TikTokActionButton(
+                icon: item.progress.completed ? Icons.favorite : Icons.favorite_border,
+                activeIconColor: const Color(0xFFFF4D6D),
+                label: item.progress.completed ? 'Learned' : 'Learn',
+                onTap: item.progress.completed ? null : _markLearned,
+                busy: _busy,
+              ),
+            ),
         ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(style.icon, color: iconColor, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    style.label.toUpperCase(),
-                    style: TextStyle(color: iconColor, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4),
-                  ),
-                ),
-                if (item.progress.completed)
-                  Icon(Icons.check_circle, color: iconColor, size: 20),
-              ],
-            ),
-            const SizedBox(height: 16),
-            isClean ? _buildStudyPanelContent(options) : _buildScrollableBody(options),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: _busy
-                      ? Center(
-                          child: SizedBox.square(
-                            dimension: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: iconColor),
-                          ),
-                        )
-                      : (isClean
-                          ? FilledButton.icon(
-                              onPressed: primaryAction,
-                              icon: Icon(needsCheckButton ? Icons.check : Icons.bookmark_add_outlined),
-                              label: Text(needsCheckButton
-                                  ? 'Check answer'
-                                  : item.progress.completed
-                                      ? 'Learned'
-                                      : 'Mark learned'),
-                            )
-                          : _ChoiceButton(
-                              label: needsCheckButton
-                                  ? 'Check answer'
-                                  : item.progress.completed
-                                      ? 'Learned'
-                                      : 'Mark learned',
-                              icon: needsCheckButton ? Icons.check : Icons.bookmark_add_outlined,
-                              onPressed: primaryAction,
-                            )),
-                ),
-                const SizedBox(width: 10),
-                IconButton(
-                  onPressed: () => context.go('/learn?tab=live&drawer=chat'),
-                  icon: Icon(Icons.chat_bubble_outline, color: iconColor),
-                  tooltip: 'Ask tutor',
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '${item.studySpaceName} · ${DateFormat.MMMd().format(item.createdAt)}',
-              style: TextStyle(color: mutedTextColor, fontSize: 12),
-            ),
-          ],
-        ),
       ),
     );
   }
 }
 
+class _TikTokActionButton extends StatelessWidget {
+  const _TikTokActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.activeIconColor,
+    this.busy = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final Color? activeIconColor;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    final look = FeedWorldLook.of(context);
+    final color = activeIconColor ?? look.ink;
+
+    const size = LsLayout.coachMascotSize;
+
+    return GestureDetector(
+      onTap: busy ? null : onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: look.glassStrong,
+              shape: BoxShape.circle,
+            ),
+            child: busy
+                ? Center(child: SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2, color: color)))
+                : Icon(icon, color: color, size: 28),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: look.ink,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeedWorldPainter extends CustomPainter {
+  _FeedWorldPainter({required this.accent, required this.look});
+
+  final Color accent;
+  final FeedWorldLook look;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final glow = Paint()
+      ..shader = RadialGradient(
+        colors: [accent.withValues(alpha: look.isDark ? 0.38 : 0.55), accent.withValues(alpha: 0)],
+      ).createShader(Rect.fromCircle(center: Offset(size.width * 0.18, size.height * 0.22), radius: size.width * 0.9));
+    canvas.drawCircle(Offset(size.width * 0.18, size.height * 0.22), size.width * 0.9, glow);
+
+    final secondary = look.isDark ? const Color(0xFF7C5CFF) : const Color(0xFFFFB38A);
+    final glow2 = Paint()
+      ..shader = RadialGradient(
+        colors: [secondary.withValues(alpha: look.isDark ? 0.18 : 0.28), secondary.withValues(alpha: 0)],
+      ).createShader(Rect.fromCircle(center: Offset(size.width * 0.92, size.height * 0.78), radius: size.width * 0.7));
+    canvas.drawCircle(Offset(size.width * 0.92, size.height * 0.78), size.width * 0.7, glow2);
+
+    final vignette = Paint()
+      ..shader = RadialGradient(
+        colors: [const Color(0x00000000), look.vignette],
+        stops: const [0.45, 1],
+      ).createShader(Offset.zero & size);
+    canvas.drawRect(Offset.zero & size, vignette);
+  }
+
+  @override
+  bool shouldRepaint(covariant _FeedWorldPainter oldDelegate) =>
+      oldDelegate.accent != accent || oldDelegate.look.isDark != look.isDark;
+}
+
 typedef FeedKindStyle = ({IconData icon, String label, List<Color> gradient});
 
-FeedKindStyle feedKindStyle(String kind) {
+FeedKindStyle feedKindStyle(String kind, {required bool isDark, required Color seed}) {
+  List<Color> wash(Color hue) {
+    if (isDark) {
+      return [
+        Color.lerp(Color.lerp(hue, seed, 0.5)!, const Color(0xFF0A0A14), 0.22)!,
+        Color.lerp(const Color(0xFF07070F), seed, 0.24)!,
+      ];
+    }
+    return [
+      Color.lerp(Color.lerp(hue, seed, 0.42)!, Colors.white, 0.32)!,
+      Color.lerp(const Color(0xFFF6F2EC), seed, 0.16)!,
+    ];
+  }
+
   switch (kind) {
     case 'meme':
-      return (icon: Icons.emoji_emotions_outlined, label: 'Meme', gradient: const [Color(0xFF1E293B), Color(0xFF0F172A)]);
+      return (icon: Icons.emoji_emotions_outlined, label: 'Meme', gradient: wash(const Color(0xFFC084FC)));
     case 'quiz':
-      return (icon: Icons.quiz_outlined, label: 'Quiz', gradient: const [Color(0xFF2A3530), Color(0xFF1C2420)]);
+      return (icon: Icons.quiz_outlined, label: 'Quiz', gradient: wash(const Color(0xFF818CF8)));
     case 'flashcard':
-      return (icon: Icons.style_outlined, label: 'Flashcard', gradient: const [Color(0xFF2A3530), Color(0xFF1C2420)]);
+      return (icon: Icons.style_outlined, label: 'Flashcard', gradient: wash(const Color(0xFF67E8F9)));
     case 'fill_blank':
-      return (icon: Icons.edit_note_outlined, label: 'Fill in the blank', gradient: const [Color(0xFF059669), Color(0xFF0D9488)]);
+      return (icon: Icons.edit_note_outlined, label: 'Fill in the blank', gradient: wash(const Color(0xFF86EFAC)));
     case 'true_false':
-      return (icon: Icons.rule_outlined, label: 'True or false', gradient: const [Color(0xFF2A3530), Color(0xFF1C2420)]);
+      return (icon: Icons.rule_outlined, label: 'True or false', gradient: wash(const Color(0xFFF9A8D4)));
     case 'did_you_know':
-      return (icon: Icons.lightbulb_outline, label: 'Did you know', gradient: const [Color(0xFFF59E0B), Color(0xFFF97316)]);
+      return (icon: Icons.lightbulb_outline, label: 'Did you know', gradient: wash(const Color(0xFFFCD34D)));
     default:
-      return (icon: Icons.auto_awesome_outlined, label: kind.replaceAll('_', ' '), gradient: const [Color(0xFF059669), Color(0xFF047857)]);
+      return (icon: Icons.auto_awesome_outlined, label: kind.replaceAll('_', ' '), gradient: wash(seed));
   }
 }
 
@@ -1114,35 +1670,43 @@ class _FlashCard extends StatelessWidget {
     required this.back,
     required this.flipped,
     required this.onFlip,
-    this.onLightPanel = false,
   });
 
   final String front;
   final String back;
   final bool flipped;
   final VoidCallback onFlip;
-  final bool onLightPanel;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final look = FeedWorldLook.of(context);
+
+    return Stack(
+      fit: StackFit.expand,
       children: [
+        Transform.rotate(
+          angle: 0.03,
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(8, 24, 0, 16),
+            decoration: BoxDecoration(
+              color: look.glass,
+              borderRadius: BorderRadius.circular(36),
+              border: Border.all(color: look.glassBorder),
+            ),
+          ),
+        ),
         GestureDetector(
           onTap: onFlip,
           child: TweenAnimationBuilder<double>(
             tween: Tween<double>(end: flipped ? 1 : 0),
-            duration: const Duration(milliseconds: 420),
-            curve: Curves.easeInOut,
+            duration: const Duration(milliseconds: 520),
+            curve: Curves.easeInOutCubic,
             builder: (context, value, child) {
               final showBack = value > 0.5;
               return Transform(
                 alignment: Alignment.center,
                 transform: Matrix4.identity()
-                  ..setEntry(3, 2, 0.001)
+                  ..setEntry(3, 2, 0.0012)
                   ..rotateY(value * math.pi),
                 child: Transform(
                   alignment: Alignment.center,
@@ -1151,104 +1715,95 @@ class _FlashCard extends StatelessWidget {
                     context,
                     label: showBack ? 'Answer' : 'Term',
                     text: showBack ? back : front,
+                    hint: showBack ? 'Tap to see the term' : 'Tap to flip',
                   ),
                 ),
               );
             },
           ),
         ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.touch_app_outlined,
-              size: 16,
-              color: onLightPanel ? (isDark ? Colors.white70 : const Color(0xFF64748B)) : Colors.white.withValues(alpha: 0.75),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              flipped ? 'Tap to see the term' : 'Tap to reveal the answer',
-              style: TextStyle(
-                color: onLightPanel ? (isDark ? Colors.white70 : const Color(0xFF64748B)) : Colors.white.withValues(alpha: 0.75),
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }
 
-  Widget _face(BuildContext context, {required String label, required String text}) {
-    final theme = Theme.of(context);
-    if (onLightPanel) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+  Widget _face(
+    BuildContext context, {
+    required String label,
+    required String text,
+    required String hint,
+  }) {
+    final look = FeedWorldLook.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: Color.lerp(look.sheet, look.seed, look.isDark ? 0.16 : 0.08),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: look.seed.withValues(alpha: 0.28), width: 1.4),
+        boxShadow: [
+          BoxShadow(
+            color: look.seed.withValues(alpha: look.isDark ? 0.22 : 0.14),
+            blurRadius: 28,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(999),
+                color: look.seed.withValues(alpha: look.isDark ? 0.24 : 0.14),
+                borderRadius: BorderRadius.circular(99),
               ),
               child: Text(
                 label.toUpperCase(),
                 style: TextStyle(
-                  color: theme.colorScheme.primary,
+                  color: look.seed,
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2,
+                  letterSpacing: 1.8,
                 ),
               ),
             ),
-            const SizedBox(height: 18),
-            Text(
-              text,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: theme.colorScheme.onSurface,
-                    fontWeight: FontWeight.w700,
-                    height: 1.35,
+            Expanded(
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: label == 'Term'
+                        ? Text(
+                            text,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: look.seed,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 36,
+                              height: 1.2,
+                              letterSpacing: -0.8,
+                            ),
+                          )
+                        : _FeedRichText(
+                            text: text,
+                            fontSize: 32,
+                            height: 1.22,
+                            textAlign: TextAlign.center,
+                          ),
                   ),
+                ),
+              ),
+            ),
+            Text(
+              hint,
+              style: TextStyle(
+                color: look.seed.withValues(alpha: 0.72),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         ),
-      );
-    }
-
-    return _legacyFace(context, label: label, text: text);
-  }
-
-  Widget _legacyFace(BuildContext context, {required String label, required String text}) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 210),
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            text,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w700, height: 1.35),
-          ),
-        ],
       ),
     );
   }
@@ -1261,29 +1816,40 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(999),
+          color: theme.colorScheme.primary.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3), width: 0.5),
         ),
-        child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        child: Text(
+          text,
+          style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w700, fontSize: 12),
+        ),
       ),
     );
   }
 }
 
 class _FeedbackBanner extends StatelessWidget {
-  const _FeedbackBanner({required this.correct, required this.message});
+  const _FeedbackBanner({
+    required this.correct,
+    required this.message,
+    this.onExplain,
+  });
 
   final bool correct;
   final String message;
+  final VoidCallback? onExplain;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final look = FeedWorldLook.of(context);
+    final isDark = look.isDark;
     final background = correct
         ? (isDark ? const Color(0xFF064E3B) : const Color(0xFFE8F0EA))
         : (isDark ? const Color(0xFF451A03) : const Color(0xFFFEF3C7));
@@ -1298,31 +1864,44 @@ class _FeedbackBanner extends StatelessWidget {
         : (isDark ? const Color(0xFFFBBF24) : const Color(0xFFB45309));
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border, width: 0.5),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
             correct ? Icons.check_circle_outline : Icons.info_outline,
             color: iconColor,
-            size: 20,
+            size: 18,
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               message,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: foreground,
-                height: 1.4,
-                fontWeight: FontWeight.w500,
+                height: 1.3,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
               ),
             ),
           ),
+          if (onExplain != null)
+            TextButton(
+              onPressed: onExplain,
+              style: TextButton.styleFrom(
+                foregroundColor: foreground,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Explain', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+            ),
         ],
       ),
     );
@@ -1348,44 +1927,43 @@ class _StudyPollButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final look = FeedWorldLook.of(context);
     final isCorrect = feedbackState == _OptionFeedbackState.correct;
     final isWrong = feedbackState == _OptionFeedbackState.wrong;
     final background = isCorrect
-        ? (isDark ? const Color(0xFF064E3B) : const Color(0xFFE8F0EA))
+        ? (look.isDark ? const Color(0xFF064E3B) : const Color(0xFFE8F0EA))
         : isWrong
-            ? (isDark ? const Color(0xFF450A0A) : const Color(0xFFFEE2E2))
+            ? (look.isDark ? const Color(0xFF450A0A) : const Color(0xFFFEE2E2))
             : selected
-                ? theme.colorScheme.primaryContainer
-                : (isDark ? const Color(0xFF1E293B) : Colors.white);
+                ? Color.lerp(look.sheet, look.seed, look.isDark ? 0.28 : 0.14)!
+                : look.sheet;
     final border = isCorrect
-        ? (isDark ? const Color(0xFF34D399) : const Color(0xFF047857))
+        ? (look.isDark ? const Color(0xFF34D399) : const Color(0xFF047857))
         : isWrong
-            ? (isDark ? const Color(0xFFF87171) : const Color(0xFFB91C1C))
-            : selected
-                ? theme.colorScheme.primary
-                : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8E6));
+            ? (look.isDark ? const Color(0xFFF87171) : const Color(0xFFB91C1C))
+            : look.glassBorder;
     final labelColor = isCorrect
-        ? (isDark ? const Color(0xFFD1FAE5) : const Color(0xFF14532D))
+        ? (look.isDark ? const Color(0xFFD1FAE5) : const Color(0xFF14532D))
         : isWrong
-            ? (isDark ? const Color(0xFFFECACA) : const Color(0xFF991B1B))
-            : (isDark ? accent.withValues(alpha: 0.95) : accent);
+            ? (look.isDark ? const Color(0xFFFECACA) : const Color(0xFF991B1B))
+            : look.ink;
 
     return Material(
       color: background,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(28),
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(28),
+        child: SizedBox.expand(
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 18),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(28),
             border: Border.all(color: border, width: (isCorrect || isWrong || selected) ? 2 : 1),
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 isCorrect
@@ -1394,19 +1972,21 @@ class _StudyPollButton extends StatelessWidget {
                         ? Icons.cancel
                         : icon,
                 color: labelColor,
-                size: 26,
+                size: 30,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
                 label,
                 style: TextStyle(
-                  color: labelColor,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
+                  color: selected && !isCorrect && !isWrong ? look.seed : labelColor,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 22,
+                  letterSpacing: -0.3,
                 ),
               ),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -1420,7 +2000,6 @@ class _OptionTile extends StatelessWidget {
     required this.selected,
     required this.feedbackState,
     required this.onTap,
-    this.onLightPanel = false,
   });
 
   final String label;
@@ -1428,156 +2007,91 @@ class _OptionTile extends StatelessWidget {
   final bool selected;
   final _OptionFeedbackState feedbackState;
   final VoidCallback? onTap;
-  final bool onLightPanel;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final look = FeedWorldLook.of(context);
     final isCorrect = feedbackState == _OptionFeedbackState.correct;
     final isWrong = feedbackState == _OptionFeedbackState.wrong;
     final accent = isCorrect
-        ? (isDark ? const Color(0xFF34D399) : const Color(0xFF047857))
+        ? (look.isDark ? const Color(0xFF34D399) : const Color(0xFF047857))
         : isWrong
-            ? (isDark ? const Color(0xFFF87171) : const Color(0xFFB91C1C))
-            : theme.colorScheme.primary;
-    final correctBackground = isDark ? const Color(0xFF064E3B) : const Color(0xFFE8F0EA);
-    final wrongBackground = isDark ? const Color(0xFF450A0A) : const Color(0xFFFEE2E2);
+            ? (look.isDark ? const Color(0xFFF87171) : const Color(0xFFB91C1C))
+            : selected
+                ? look.seed
+                : look.ink;
+    final background = isCorrect
+        ? (look.isDark ? const Color(0xFF064E3B) : const Color(0xFFE8F0EA))
+        : isWrong
+            ? (look.isDark ? const Color(0xFF450A0A) : const Color(0xFFFEE2E2))
+            : selected
+                ? Color.lerp(look.sheet, look.seed, look.isDark ? 0.28 : 0.12)!
+                : look.sheet;
     final labelColor = isCorrect
-        ? (isDark ? const Color(0xFFD1FAE5) : const Color(0xFF14532D))
+        ? (look.isDark ? const Color(0xFFD1FAE5) : const Color(0xFF14532D))
         : isWrong
-            ? (isDark ? const Color(0xFFFECACA) : const Color(0xFF991B1B))
-            : theme.colorScheme.onSurface;
-    final idleBackground = isDark ? const Color(0xFF273449) : Colors.white;
-    
-    if (onLightPanel) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Material(
-          color: isCorrect
-              ? correctBackground
-              : isWrong
-                  ? wrongBackground
+            ? (look.isDark ? const Color(0xFFFECACA) : const Color(0xFF991B1B))
+            : look.ink;
+
+    return Material(
+      color: background,
+      elevation: selected || isCorrect || isWrong ? 0 : 1,
+      shadowColor: look.ink.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 58),
+          padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isCorrect || isWrong
+                  ? accent
                   : selected
-                      ? theme.colorScheme.primaryContainer
-                      : idleBackground,
-          borderRadius: BorderRadius.circular(14),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: onTap,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: (isCorrect || isWrong || selected) ? accent : theme.colorScheme.outline.withValues(alpha: 0.2),
-                  width: (isCorrect || isWrong || selected) ? 2 : 1,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: (isCorrect || isWrong || selected) ? accent : theme.colorScheme.surfaceContainerHighest,
-                    ),
-                    child: Text(
-                      String.fromCharCode(65 + index),
-                      style: TextStyle(
-                        color: (isCorrect || isWrong || selected)
-                            ? (isDark ? const Color(0xFF0C1222) : Colors.white)
-                            : theme.colorScheme.onSurface,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        color: labelColor,
-                        height: 1.4,
-                        fontWeight: (isCorrect || isWrong || selected) ? FontWeight.w700 : FontWeight.w500,
-                        fontSize: 15,
-                      ),
-                    ),
-                  ),
-                  if (isCorrect) Icon(Icons.check_circle, color: accent, size: 22),
-                  if (isWrong) Icon(Icons.cancel, color: accent, size: 22),
-                  if (!isCorrect && !isWrong && selected) Icon(Icons.check_circle, color: theme.colorScheme.primary, size: 22),
-                ],
-              ),
+                      ? look.seed
+                      : look.glassBorder,
+              width: selected || isCorrect || isWrong ? 2 : 1,
             ),
           ),
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: isCorrect
-            ? const Color(0x40047857)
-            : isWrong
-                ? const Color(0x40B91C1C)
-                : Colors.white.withValues(alpha: selected ? 0.28 : 0.12),
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            child: Row(
-              children: [
-                Container(
-                  width: 26,
-                  height: 26,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: (isCorrect || isWrong || selected) ? Colors.white : Colors.transparent,
-                    border: Border.all(
-                      color: isCorrect
-                          ? const Color(0xFF047857)
-                          : isWrong
-                              ? const Color(0xFFB91C1C)
-                              : Colors.white.withValues(alpha: 0.8),
-                      width: 2,
-                    ),
-                  ),
-                  child: Text(
-                    String.fromCharCode(65 + index),
-                    style: TextStyle(
-                      color: isCorrect
-                          ? const Color(0xFF047857)
-                          : isWrong
-                              ? const Color(0xFFB91C1C)
-                              : selected
-                                  ? theme.colorScheme.primary
-                                  : Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12,
-                    ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: selected || isCorrect || isWrong
+                      ? accent.withValues(alpha: 0.16)
+                      : look.glass,
+                ),
+                child: Text(
+                  String.fromCharCode(65 + index),
+                  style: TextStyle(
+                    color: accent,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      color: isWrong ? const Color(0xFFFECACA) : Colors.white,
-                      height: 1.35,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _FeedRichText(
+                  text: label,
+                  fontSize: 16,
+                  weight: FontWeight.w700,
+                  height: 1.35,
+                  color: (isCorrect || isWrong) ? labelColor : null,
                 ),
-              ],
-            ),
+              ),
+              if (isCorrect) Icon(Icons.check_circle, color: accent, size: 20),
+              if (isWrong) Icon(Icons.cancel, color: accent, size: 20),
+              if (!isCorrect && !isWrong && selected) Icon(Icons.check_circle, color: look.seed, size: 20),
+            ],
           ),
         ),
       ),
@@ -1586,52 +2100,6 @@ class _OptionTile extends StatelessWidget {
 }
 
 enum _OptionFeedbackState { none, correct, wrong }
-
-class _ChoiceButton extends StatelessWidget {
-  const _ChoiceButton({
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-    this.selected = false,
-    this.feedbackState = _OptionFeedbackState.none,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback? onPressed;
-  final bool selected;
-  final _OptionFeedbackState feedbackState;
-
-  @override
-  Widget build(BuildContext context) {
-    final isCorrect = feedbackState == _OptionFeedbackState.correct;
-    final isWrong = feedbackState == _OptionFeedbackState.wrong;
-    return FilledButton.icon(
-      onPressed: onPressed,
-      icon: Icon(
-        isCorrect
-            ? Icons.check_circle
-            : isWrong
-                ? Icons.cancel
-                : icon,
-        size: 18,
-      ),
-      label: Text(label, overflow: TextOverflow.ellipsis),
-      style: FilledButton.styleFrom(
-        backgroundColor: isCorrect
-            ? const Color(0xFF047857)
-            : isWrong
-                ? const Color(0xFFB91C1C)
-                : selected
-                    ? Colors.white.withValues(alpha: 0.35)
-                    : Colors.white.withValues(alpha: 0.2),
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-    );
-  }
-}
 
 Color _memeColor(String value, Color fallback) {
   switch (value.trim().toLowerCase()) {
@@ -1663,45 +2131,50 @@ class _MemeImage extends StatelessWidget {
     final stroke = _memeColor(meme.strokeColor, Colors.black);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final scale = meme.width <= 0 ? 1.0 : width / meme.width;
-        return SizedBox(
-          width: width,
-          height: meme.height * scale,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: Image.network(
-                  meme.imageUrl,
-                  fit: BoxFit.fill,
-                  loadingBuilder: (context, child, progress) => progress == null
-                      ? child
-                      : const ColoredBox(
-                          color: Colors.black26,
-                          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                        ),
-                  errorBuilder: (_, __, ___) => const ColoredBox(
-                    color: Colors.black26,
-                    child: Center(child: Icon(Icons.image_not_supported_outlined, color: Colors.white54, size: 40)),
-                  ),
-                ),
-              ),
-              for (final slot in meme.slots)
-                if (slot.caption.trim().isNotEmpty)
-                  Positioned(
-                    left: slot.left * scale,
-                    top: slot.top * scale,
-                    width: slot.width * scale,
-                    height: slot.height * scale,
-                    child: _MemeCaption(
-                      text: slot.caption,
-                      fontSize: slot.fontSize * scale,
-                      fill: fill,
-                      stroke: stroke,
-                      strokeWidth: (meme.strokeWidth * scale).clamp(1.0, 6.0),
+        final srcW = meme.width <= 0 ? 1.0 : meme.width;
+        final srcH = meme.height <= 0 ? 1.0 : meme.height;
+        final scale = math.min(constraints.maxWidth / srcW, constraints.maxHeight / srcH);
+        final width = srcW * scale;
+        final height = srcH * scale;
+        return Center(
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Image.network(
+                    meme.imageUrl,
+                    fit: BoxFit.fill,
+                    loadingBuilder: (context, child, progress) => progress == null
+                        ? child
+                        : const ColoredBox(
+                            color: Colors.black26,
+                            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                          ),
+                    errorBuilder: (_, __, ___) => const ColoredBox(
+                      color: Colors.black26,
+                      child: Center(child: Icon(Icons.image_not_supported_outlined, color: Colors.white54, size: 40)),
                     ),
                   ),
-            ],
+                ),
+                for (final slot in meme.slots)
+                  if (slot.caption.trim().isNotEmpty)
+                    Positioned(
+                      left: slot.left * scale,
+                      top: slot.top * scale,
+                      width: slot.width * scale,
+                      height: slot.height * scale,
+                      child: _MemeCaption(
+                        text: slot.caption,
+                        fontSize: slot.fontSize * scale,
+                        fill: fill,
+                        stroke: stroke,
+                        strokeWidth: (meme.strokeWidth * scale).clamp(1.0, 6.0),
+                      ),
+                    ),
+              ],
+            ),
           ),
         );
       },
@@ -1784,7 +2257,7 @@ class _EmptyFeed extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.dynamic_feed, size: 56, color: Theme.of(context).colorScheme.primary),
+              Icon(Icons.nights_stay_outlined, size: 56, color: Theme.of(context).colorScheme.onSurfaceVariant),
               const SizedBox(height: 16),
               Text(
                 l10n.feedEmptyTitle,
@@ -1820,7 +2293,7 @@ class _EmptyFeed extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.filter_alt_outlined, size: 56, color: Theme.of(context).colorScheme.primary),
+              Icon(Icons.filter_alt_outlined, size: 56, color: Theme.of(context).colorScheme.onSurfaceVariant),
               const SizedBox(height: 16),
               Text(
                 l10n.noKindInFilter(_kindLabel(l10n)),
@@ -1849,7 +2322,7 @@ class _EmptyFeed extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.manage_search_outlined, size: 56, color: Theme.of(context).colorScheme.primary),
+              Icon(Icons.hourglass_empty, size: 56, color: Theme.of(context).colorScheme.onSurfaceVariant),
               const SizedBox(height: 16),
               const Text(
                 'Your files are still getting ready.',
@@ -1873,7 +2346,7 @@ class _EmptyFeed extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.hourglass_top_outlined, size: 56, color: Theme.of(context).colorScheme.primary),
+            Icon(Icons.auto_awesome_outlined, size: 56, color: Theme.of(context).colorScheme.onSurfaceVariant),
             const SizedBox(height: 16),
             Text(
               kind == 'all' ? l10n.feedStillPreparing : l10n.feedNoKindYet(_kindLabel(l10n)),
@@ -1905,5 +2378,19 @@ class _ErrorState extends StatelessWidget {
   final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) => Center(child: Padding(padding: const EdgeInsets.all(28), child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.cloud_off_outlined, size: 48), const SizedBox(height: 12), Text(message, textAlign: TextAlign.center), const SizedBox(height: 16), OutlinedButton(onPressed: onRetry, child: const Text('Try again'))])));
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.nights_stay_outlined, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+              const SizedBox(height: 12),
+              Text(message, textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, height: 1.4)),
+              const SizedBox(height: 16),
+              FilledButton(onPressed: onRetry, child: const Text('Try again')),
+            ],
+          ),
+        ),
+      );
 }
