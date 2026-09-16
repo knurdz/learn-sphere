@@ -587,7 +587,7 @@ cd /opt/learnsphere/app && git pull && sudo bash deploy/up.sh
 
 ### Android sideload releases
 
-APKs are **not** on the Play Store. Use GitHub **Actions → Android Release** (draft APK). Add repository secrets (keystore + Supabase + `API_BASE_URL=https://learnsphere.knurdz.org`) — see [`docs/android-release.md`](docs/android-release.md). Run the workflow with a tag (e.g. `v0.1.0`), review the draft release, then publish.
+**Sideload APKs:** GitHub **Actions → Android Release** (draft APK). **Play Store AAB:** **Actions → Android Play AAB** (download artifact, upload in Play Console). Add repository secrets (keystore + Supabase + `API_BASE_URL=https://learnsphere.knurdz.org`) — see [`docs/android-release.md`](docs/android-release.md). For APKs, run the workflow with a tag (e.g. `v0.1.0`), review the draft release, then publish.
 
 ### Other hosts
 
@@ -609,7 +609,7 @@ You can deploy [`api/`](api/) alone to Vercel or Cloud Run; run the live worker 
 | `deploy/docker/` | Multi-stage Dockerfiles for **api** and **agent** |
 | `deploy/env/` | Example `api.env` / `agent.env` for `/opt/learnsphere/env/` on the VM |
 | `supabase/` | Database migrations and CLI config |
-| `docs/android-release.md` | Keystore + GitHub Actions APK releases |
+| `docs/android-release.md` | Keystore + GitHub Actions APK and Play Store AAB releases |
 | `docs/screenshots/` | README marketing captures (see [`docs/screenshots/README.md`](docs/screenshots/README.md)) |
 
 ## Troubleshooting

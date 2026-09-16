@@ -1,6 +1,6 @@
-# Android sideload releases (GitHub Actions)
+# Android releases (GitHub Actions)
 
-LearnSphere is not published to the Play Store for now. Release APKs are built in CI, attached to **draft** GitHub Releases, and installed manually.
+Release builds are produced in CI using the same signing keystore and production env secrets. **APKs** are for sideload installs via draft GitHub Releases. **AABs** are for uploading to Google Play.
 
 ## One-time: create a release keystore
 
@@ -60,3 +60,26 @@ Version **name/code** inside the app still come from `pubspec.yaml` (`version: x
 1. Download `learn-sphere-<version>.apk` from the release.
 2. Enable install from unknown sources (or use `adb install -r learn-sphere-0.1.0.apk`).
 3. Ensure the device can reach `https://learnsphere.knurdz.org` and Supabase.
+
+## Play Store (AAB)
+
+Google Play requires an **Android App Bundle** (`.aab`), not an APK.
+
+### Build in CI
+
+1. GitHub → **Actions** → **Android Play AAB** → **Run workflow**.
+2. Optionally enter an **artifact label** (e.g. `v0.2.4`) to suffix the filename; otherwise the name comes from `pubspec.yaml` (e.g. `learn-sphere-0.2.4.aab`).
+3. When the job finishes, open the run → **Artifacts** → download **`learn-sphere-aab`** (contains the signed `.aab`).
+
+The workflow uses the same repository secrets as the APK release (`ANDROID_*`, `SUPABASE_*`, `API_BASE_URL=https://learnsphere.knurdz.org`). Supabase values must match the VM — see [`deploy/AUTH-CHECK.md`](../deploy/AUTH-CHECK.md).
+
+### Upload to Play Console
+
+1. Open [Google Play Console](https://play.google.com/console) and create or select the app with package **`com.learnsphere.learnsphere_mobile`**.
+2. Go to **Release** → **Production** or **Internal testing** → **Create new release**.
+3. Upload the downloaded `.aab`.
+4. Complete store listing requirements (privacy policy, content rating, graphics) if not done already.
+
+**Version code:** bump the `+N` in `pubspec.yaml` before each Play upload (e.g. `0.2.4+2`). Play rejects duplicate or lower version codes. Version name/code inside the bundle come from `pubspec.yaml`, not the optional artifact label.
+
+**Upload key:** the keystore in `ANDROID_KEYSTORE_BASE64` is the upload key. Use the same key for every Play upload; if Play Console already registered a different key, signing must match that key instead.

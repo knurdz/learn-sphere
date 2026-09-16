@@ -1,0 +1,112 @@
+name: Android Play AAB
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_label:
+        description: Optional suffix for the AAB filename (e.g. v0.2.4 or play-upload-1)
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  build-aab:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Decode release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [[ -z "${ANDROID_KEYSTORE_BASE64}" ]]; then
+            echo "Missing secret ANDROID_KEYSTORE_BASE64"
+            exit 1
+          fi
+          echo "${ANDROID_KEYSTORE_BASE64}" | base64 -d > android/upload-keystore.jks
+
+      - name: Write android/key.properties
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for name in ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing secret ${name}"
+              exit 1
+            fi
+          done
+          {
+            echo "storePassword=${ANDROID_KEYSTORE_PASSWORD}"
+            echo "keyPassword=${ANDROID_KEY_PASSWORD}"
+            echo "keyAlias=${ANDROID_KEY_ALIAS}"
+            echo "storeFile=upload-keystore.jks"
+          } > android/key.properties
+
+      - name: Write .env.local for release
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        run: |
+          for name in SUPABASE_URL SUPABASE_ANON_KEY API_BASE_URL; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing secret ${name}"
+              exit 1
+            fi
+          done
+          {
+            echo "SUPABASE_URL=${SUPABASE_URL}"
+            echo "SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}"
+            echo "API_BASE_URL=${API_BASE_URL}"
+          } > .env.local
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release AAB
+        run: flutter build appbundle --release
+
+      - name: Brand release AAB
+        id: aab
+        env:
+          ARTIFACT_LABEL: ${{ inputs.artifact_label }}
+        run: |
+          SRC="build/app/outputs/bundle/release/app-release.aab"
+          if [[ ! -f "${SRC}" ]]; then
+            echo "Expected ${SRC} not found"
+            ls -la build/app/outputs/bundle/release/ || true
+            exit 1
+          fi
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | tr -d ' ')
+          VERSION_NAME="${VERSION%%+*}"
+          if [[ -n "${ARTIFACT_LABEL}" ]]; then
+            SAFE_LABEL="${ARTIFACT_LABEL//\//-}"
+            AAB="build/app/outputs/bundle/release/learn-sphere-${SAFE_LABEL}.aab"
+          else
+            AAB="build/app/outputs/bundle/release/learn-sphere-${VERSION_NAME}.aab"
+          fi
+          cp "${SRC}" "${AAB}"
+          echo "path=${AAB}" >> "$GITHUB_OUTPUT"
+          echo "Built ${AAB} (pubspec version: ${VERSION})"
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: learn-sphere-aab
+          path: ${{ steps.aab.outputs.path }}
+          retention-days: 90
