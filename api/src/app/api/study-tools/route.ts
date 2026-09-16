@@ -518,14 +518,17 @@ export async function POST(request: NextRequest) {
     ? artifactTitle(kind) + ": " + materialLabel.slice(0, 80)
     : artifactTitle(kind);
 
-  const row = {
-    user_id: context.user.id,
-    study_space_id: studySpaceId,
+  const updateRow = {
     kind,
     title: savedTitle,
     payload: jsonValue(payload),
     material_id: boundMaterialId ?? null,
     generation_key: generationKey,
+  };
+  const insertRow = {
+    user_id: context.user.id,
+    study_space_id: studySpaceId,
+    ...updateRow,
   };
 
   let artifact: StudyArtifact | null = null;
@@ -561,7 +564,7 @@ export async function POST(request: NextRequest) {
 
     const { data: updated, error: updateError } = await context.supabase
       .from("study_artifacts")
-      .update(row)
+      .update(updateRow)
       .eq("id", existingQuizId)
       .eq("user_id", context.user.id)
       .select("*")
@@ -577,7 +580,7 @@ export async function POST(request: NextRequest) {
   } else {
     const { data: inserted, error: insertError } = await context.supabase
       .from("study_artifacts")
-      .insert(row)
+      .insert(insertRow)
       .select("*")
       .single();
 
