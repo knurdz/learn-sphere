@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest an idea or improvement for Learn Sphere
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Is this related to a problem? Please describe.
+      placeholder: I'm always frustrated when...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What you want to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How we know this is done.
+      placeholder: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Alternatives considered, mockups, or related issues.
+    validations:
+      required: false

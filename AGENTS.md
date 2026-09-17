@@ -1,5 +1,6 @@
 # Repository guide
 
+- Follow [`CONTRIBUTING.md`](CONTRIBUTING.md) for commits, issues, and PRs.
 - **Flutter app** lives at the repo root (`lib/`, `pubspec.yaml`, `android/`, `ios/`).
 - **Bridge API** (Next.js route handlers only) lives in [`api/`](api/). Before changing server code, read the Next.js guide in `api/node_modules/next/dist/docs/`—this project uses Next 16 conventions.
 - **Live tutor worker** (LiveKit Agents, Python) lives in [`agent/`](agent/). It is the only long-running process in the repo; the bridge stays request-scoped. See [`agent/README.md`](agent/README.md) for how a session is dispatched.

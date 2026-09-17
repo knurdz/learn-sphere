@@ -1,0 +1,53 @@
+name: Bug report
+description: File a bug so we can reproduce and fix it
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Describe the bug
+      description: A clear, concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: |
+        - App version / tag:
+        - Platform: Android / iOS / web
+        - API: production / local
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, logs, or file pointers. Do not include secrets.
+    validations:
+      required: false
