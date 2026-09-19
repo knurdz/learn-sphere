@@ -17,7 +17,11 @@ const faqs = [
   },
   {
     q: "Can I use LearnSphere on iOS or the web?",
-    a: "Android is available today via a direct APK download. iOS and Web are coming soon.",
+    a: "Android is available through Google Play closed testing (join the testers group with the same Gmail as your Play Store account, then install from the Play testing link). You can also sideload the APK from this site. iOS and Web are coming soon.",
+  },
+  {
+    q: "How do I join the Play Store closed test?",
+    a: "Join the LearnSphere testers Google Group with the same Gmail you use on Google Play. Once you are in the group, open the Play testing link from this page and the app will be available to install from the Play Store.",
   },
   {
     q: "What is Sphere?",

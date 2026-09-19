@@ -42,7 +42,7 @@ export default async function Home() {
 
       <div className="landing-shell">
         <div id="hero" className="hero">
-          <LandingNav downloadUrl={downloadUrl} />
+          <LandingNav />
           <HeroShowcase downloadUrl={downloadUrl} versionLabel={androidDownload.versionLabel} />
         </div>
       </div>

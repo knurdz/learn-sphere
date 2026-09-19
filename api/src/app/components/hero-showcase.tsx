@@ -1,3 +1,8 @@
+import {
+  PLAY_TESTERS_GROUP_URL,
+  PLAY_TESTING_URL,
+} from "@/lib/play-testing";
+import { GooglePlayBadge } from "./google-play-badge";
 import { PhoneMockup } from "./phone-mockup";
 
 type HeroShowcaseProps = {
@@ -17,11 +22,17 @@ export function HeroShowcase({ downloadUrl, versionLabel }: HeroShowcaseProps) {
           PDFs, docs, and videos you upload.
         </p>
         <div className="hero-cta-block">
-          <a className="btn btn-primary" href={downloadUrl}>
-            Download for Android
-          </a>
+          <GooglePlayBadge />
           <p className="hero-cta-note">
-            Direct APK, {versionNote}. Enable installs from unknown sources.
+            Join the{" "}
+            <a href={PLAY_TESTERS_GROUP_URL} target="_blank" rel="noopener noreferrer">
+              testers group
+            </a>{" "}
+            with the same Gmail as your Play Store account, then install from{" "}
+            <a href={PLAY_TESTING_URL} target="_blank" rel="noopener noreferrer">
+              Google Play
+            </a>
+            .
           </p>
         </div>
       </div>
@@ -37,7 +48,41 @@ export function HeroShowcase({ downloadUrl, versionLabel }: HeroShowcaseProps) {
           progress, without leaving your materials behind.
         </p>
         <div className="store-buttons">
-          <a className="store-btn" href={downloadUrl}>
+          <a className="store-btn" href={PLAY_TESTING_URL} target="_blank" rel="noopener noreferrer">
+            <span className="store-btn-icon" aria-hidden>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M3.5 2.5 8.5 8 3.5 13.5V2.5Z"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M8.5 8 12.5 5.5 3.5 2.5"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M8.5 8 12.5 10.5 3.5 13.5"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M12.5 5.5 8.5 8 12.5 10.5"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <span>
+              <small>Google Play</small>
+              <strong>Closed testing</strong>
+            </span>
+          </a>
+          <a className="store-btn store-btn--secondary" href={downloadUrl}>
             <span className="store-btn-icon" aria-hidden>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path
@@ -50,8 +95,8 @@ export function HeroShowcase({ downloadUrl, versionLabel }: HeroShowcaseProps) {
               </svg>
             </span>
             <span>
-              <small>Android APK</small>
-              <strong>Download for Android</strong>
+              <small>Android APK, {versionNote}</small>
+              <strong>Sideload APK</strong>
             </span>
           </a>
           <span className="store-btn store-btn--muted" aria-disabled="true">

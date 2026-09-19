@@ -381,6 +381,28 @@ button {
   line-height: 1.45;
 }
 
+.hero-cta-note a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.google-play-badge {
+  display: inline-flex;
+  line-height: 0;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.google-play-badge:hover {
+  transform: translateY(-2px);
+  opacity: 0.92;
+}
+
+.google-play-badge img {
+  width: auto;
+  height: auto;
+}
+
 .hero-col--center {
   position: relative;
   display: flex;
@@ -447,6 +469,10 @@ button {
 .store-btn:hover {
   border-color: var(--accent);
   transform: translateY(-1px);
+}
+
+.store-btn--secondary {
+  background: #1a1a24;
 }
 
 .store-btn--muted {
@@ -1252,6 +1278,21 @@ button {
   line-height: 1.55;
 }
 
+.download-cta-steps {
+  margin: 0 0 1.25rem;
+  padding-left: 1.25rem;
+  max-width: 28rem;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.55;
+}
+
+.download-cta-steps a {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .download-cta-actions {
   display: flex;
   flex-direction: column;
@@ -1274,6 +1315,16 @@ button {
 
 .btn-white:hover {
   transform: translateY(-2px);
+}
+
+.btn-white--outline {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+.btn-white--outline:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .download-cta-note {

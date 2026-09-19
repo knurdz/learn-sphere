@@ -4,6 +4,23 @@ LearnSphere is a mobile-first study companion built around a **Live AI tutor** y
 
 ---
 
+## Get the Android app
+
+LearnSphere is available on **Google Play closed testing**. Join the testers group with the **same Gmail as your Play Store account** — you will be auto-enrolled and can install from Play.
+
+<p align="center">
+  <a href="https://play.google.com/apps/testing/com.learnsphere.learnsphere_mobile">
+    <img src="api/public/badges/google-play-badge.png" alt="Get it on Google Play" height="60" />
+  </a>
+</p>
+
+1. **Join the testers group** (same Gmail as Google Play): [learn-sphere-testers](https://groups.google.com/g/learn-sphere-testers)
+2. **Open the Play testing page** and install: [Play Store closed testing](https://play.google.com/apps/testing/com.learnsphere.learnsphere_mobile)
+
+You can also sideload the latest APK from the [landing site](https://learnsphere.knurdz.org/) via `/api/download/android`.
+
+---
+
 ## Live AI tutor
 
 The headline experience is a **real-time tutoring session**: you speak naturally, the tutor listens and replies in spoken voice, and a video avatar faces you on the call—turn-taking, interruptions, and back-and-forth like a human session, not a chat box with a “play audio” button.
@@ -448,8 +465,9 @@ cd api && pnpm typecheck && pnpm test
 
 The same Next.js app that serves `/api/*` also renders a **public marketing site** at the root of the domain (**`https://learnsphere.knurdz.org/`**). It shares the bridge’s deployment—no separate host or build.
 
-- **Pages** — Hero, feature cards, “how it works”, study tools, FAQ, and an **Android download** call-to-action ([`api/src/app/page.tsx`](api/src/app/page.tsx), [`api/src/app/components/`](api/src/app/components/)).
-- **Download button** — Links to **`/api/download/android`**, which 302-redirects to the newest published release APK (or the GitHub Releases page as a fallback), so a new release is picked up without redeploying the site ([`api/src/lib/github-release.ts`](api/src/lib/github-release.ts)). Override with `ANDROID_DOWNLOAD_URL` if needed.
+- **Pages** — Hero, feature cards, “how it works”, study tools, FAQ, and a **Get the app** call-to-action with Play Store closed-testing steps plus an APK sideload option ([`api/src/app/page.tsx`](api/src/app/page.tsx), [`api/src/app/components/`](api/src/app/components/)).
+- **Play Store closed testing** — Join the [testers group](https://groups.google.com/g/learn-sphere-testers) with the same Gmail as Google Play, then install from the [Play testing page](https://play.google.com/apps/testing/com.learnsphere.learnsphere_mobile). URLs live in [`api/src/lib/play-testing.ts`](api/src/lib/play-testing.ts).
+- **APK sideload** — Links to **`/api/download/android`**, which 302-redirects to the newest published release APK (or the GitHub Releases page as a fallback), so a new release is picked up without redeploying the site ([`api/src/lib/github-release.ts`](api/src/lib/github-release.ts)). Override with `ANDROID_DOWNLOAD_URL` if needed.
 - **Assets** — Landing images live in [`api/public/`](api/public/) alongside `meme-templates/`. Because Next.js **standalone** only traces files the server reads, the Docker image copies the whole `public/` folder (see [`deploy/docker/api.Dockerfile`](deploy/docker/api.Dockerfile)); otherwise landing images 404 in production while meme templates still work.
 - **Asset URLs for the app** — Feed meme images are absolute URLs. Behind Caddy the server sees plain HTTP, so the bridge derives the public origin from `PUBLIC_BASE_URL` (or `X-Forwarded-*`) to emit **https** links; verify via `curl https://learnsphere.knurdz.org/api/health` → `origin.publicOrigin`.
 - **Local preview** — `cd api && pnpm dev`, then open `http://127.0.0.1:3000/`.

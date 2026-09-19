@@ -4,10 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 
-type LandingNavProps = {
-  downloadUrl: string;
-};
-
 const sections = [
   { id: "hero", href: "#hero", label: "Home" },
   { id: "features", href: "#features", label: "Features" },
@@ -16,7 +12,7 @@ const sections = [
   { id: "download", href: "#download", label: "Download" },
 ];
 
-export function LandingNav({ downloadUrl }: LandingNavProps) {
+export function LandingNav() {
   const [active, setActive] = useState("hero");
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -85,7 +81,7 @@ export function LandingNav({ downloadUrl }: LandingNavProps) {
       </nav>
 
       <div className="header-actions">
-        <a className="btn btn-nav-cta" href={downloadUrl}>
+        <a className="btn btn-nav-cta" href="#download">
           Download
           <span className="btn-nav-cta-arrow" aria-hidden>
             →

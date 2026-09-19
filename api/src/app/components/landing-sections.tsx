@@ -1,4 +1,9 @@
 import Image from "next/image";
+import {
+  PLAY_TESTERS_GROUP_URL,
+  PLAY_TESTING_URL,
+} from "@/lib/play-testing";
+import { GooglePlayBadge } from "./google-play-badge";
 import { PhoneMockup } from "./phone-mockup";
 
 const marqueeWords = ["Study", "Tutor", "Feed", "Notes", "Sphere", "Practice"];
@@ -256,21 +261,38 @@ export function DownloadCtaSection({
       <div className="download-cta-panel">
         <div className="download-cta-copy">
           <span className="pill-badge pill-badge--on-blue">
-            <IconStar /> Android available
+            <IconStar /> Play Store closed testing
           </span>
-          <h2 id="download-heading">Download for Android</h2>
+          <h2 id="download-heading">Get the Android app</h2>
           <p>
-            Install the APK, sign in, create a study space, and try the live tutor or learning feed
-            right away.
+            Join the testers group with the same Gmail as your Play Store account, then install from
+            Google Play. You will be auto-enrolled in closed testing once you join.
           </p>
+          <ol className="download-cta-steps">
+            <li>
+              Join the{" "}
+              <a href={PLAY_TESTERS_GROUP_URL} target="_blank" rel="noopener noreferrer">
+                LearnSphere testers group
+              </a>{" "}
+              with the same Gmail as Google Play.
+            </li>
+            <li>
+              Open the{" "}
+              <a href={PLAY_TESTING_URL} target="_blank" rel="noopener noreferrer">
+                Play Store testing page
+              </a>{" "}
+              and install the app.
+            </li>
+          </ol>
           <div className="download-cta-actions">
-            <a className="btn btn-white" href={downloadUrl}>
-              Download for Android
-            </a>
+            <GooglePlayBadge className="google-play-badge--on-blue" />
             <span className="download-cta-note">
-              Direct APK, {versionNote}. Enable installs from unknown sources. iOS and Web coming
-              soon.
+              Or sideload the direct APK ({versionNote}). Enable installs from unknown sources. iOS
+              and Web coming soon.
             </span>
+            <a className="btn btn-white btn-white--outline" href={downloadUrl}>
+              Download APK
+            </a>
           </div>
         </div>
         <div className="download-cta-phones" aria-hidden>
@@ -299,6 +321,7 @@ export function SiteFooter({ downloadUrl }: { downloadUrl: string }) {
         <div className="footer-platforms">
           <p className="footer-platforms-label">Get the app</p>
           <div className="footer-platform-row">
+            <GooglePlayBadge className="google-play-badge--footer" height={40} />
             <a className="footer-platform-btn footer-platform-btn--active" href={downloadUrl}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
                 <path
@@ -309,7 +332,7 @@ export function SiteFooter({ downloadUrl }: { downloadUrl: string }) {
                   strokeLinejoin="round"
                 />
               </svg>
-              Android
+              APK sideload
             </a>
             <span className="footer-platform-btn" aria-disabled="true">
               iOS soon
