@@ -49,6 +49,7 @@ class GamificationSummary {
     required this.coachTour,
     required this.pendingTourSteps,
     required this.coachMessage,
+    this.foregroundSeconds = 0,
   });
 
   final int currentStreak;
@@ -61,6 +62,7 @@ class GamificationSummary {
   final CoachTourState coachTour;
   final List<String> pendingTourSteps;
   final CoachMessage coachMessage;
+  final int foregroundSeconds;
 
   bool get dailyGoalMet => todayEventCount >= dailyGoal;
 
@@ -76,6 +78,7 @@ class GamificationSummary {
       coachTour: CoachTourState.fromMap(jsonMap(map['coachTour'])),
       pendingTourSteps: jsonList(map['pendingTourSteps']).map((step) => '$step').toList(),
       coachMessage: CoachMessage.fromMap(jsonMap(map['coachMessage'])),
+      foregroundSeconds: (map['foregroundSeconds'] as num?)?.toInt() ?? 0,
     );
   }
 }

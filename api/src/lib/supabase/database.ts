@@ -159,6 +159,7 @@ export type UserGamification = {
   total_xp: number;
   daily_goal: number;
   coach_tour_completed: Json;
+  foreground_seconds: number;
   updated_at: string;
 };
 
@@ -352,6 +353,7 @@ export type Database = {
           total_xp?: number;
           daily_goal?: number;
           coach_tour_completed?: Json;
+          foreground_seconds?: number;
         };
         Update: {
           current_streak?: number;
@@ -360,6 +362,7 @@ export type Database = {
           total_xp?: number;
           daily_goal?: number;
           coach_tour_completed?: Json;
+          foreground_seconds?: number;
           updated_at?: string;
         };
         Relationships: [];
@@ -367,6 +370,10 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      add_foreground_seconds: {
+        Args: { delta: number };
+        Returns: number;
+      };
       match_material_chunks: {
         Args: {
           query_embedding: number[];

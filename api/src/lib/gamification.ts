@@ -35,6 +35,14 @@ export const ACTIVITY_XP: Record<ActivityEventType, number> = {
   live_tutor_started: 20,
 };
 
+/** Max seconds accepted in one pause flush (4 hours). */
+export const MAX_FOREGROUND_DELTA_SECONDS = 14_400;
+
+export function clampForegroundDeltaSeconds(delta: number): number {
+  if (!Number.isFinite(delta)) return 0;
+  return Math.min(MAX_FOREGROUND_DELTA_SECONDS, Math.max(0, Math.floor(delta)));
+}
+
 export type UserGamificationRow = {
   user_id: string;
   current_streak: number;
@@ -43,6 +51,7 @@ export type UserGamificationRow = {
   total_xp: number;
   daily_goal: number;
   coach_tour_completed: Json;
+  foreground_seconds: number;
   updated_at: string;
 };
 
@@ -69,6 +78,7 @@ export type GamificationSummary = {
   coachTour: CoachTourState;
   pendingTourSteps: CoachTourStepId[];
   coachMessage: CoachMessagePayload;
+  foregroundSeconds: number;
 };
 
 export type AnalyticsRange = "day" | "week" | "month";
@@ -473,6 +483,23 @@ export async function ensureGamificationRow(
   return inserted as UserGamificationRow;
 }
 
+export async function addForegroundSeconds(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  delta: number,
+): Promise<number> {
+  await ensureGamificationRow(supabase, userId);
+  const clamped = clampForegroundDeltaSeconds(delta);
+  if (clamped < 1) {
+    const row = await ensureGamificationRow(supabase, userId);
+    return row.foreground_seconds ?? 0;
+  }
+
+  const { data, error } = await supabase.rpc("add_foreground_seconds", { delta: clamped });
+  if (error) throw error;
+  return typeof data === "number" ? data : Number(data) || 0;
+}
+
 export async function fetchGamificationSummary(
   supabase: SupabaseClient<Database>,
   userId: string,
@@ -517,6 +544,7 @@ export async function fetchGamificationSummary(
     onboardingStep,
     coachTour,
     pendingTourSteps: pending,
+    foregroundSeconds: row.foreground_seconds ?? 0,
   };
 
   const atRisk = streakAtRisk(row, today, todayEventCount ?? 0);

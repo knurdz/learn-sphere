@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../app_usage_provider.dart';
 import '../auth_controller.dart';
 import '../gamification_provider.dart';
 import '../theme.dart';
@@ -91,7 +92,7 @@ class DualWalletChip extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final summary = ref.watch(gamificationProvider).valueOrNull;
     final studyCredits = (summary?.totalXp ?? 0) * 10;
-    const liveMinutes = 120;
+    final liveMinutesLabel = formatForegroundMinutes(ref.watch(appUsageProvider));
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -124,9 +125,9 @@ class DualWalletChip extends ConsumerWidget {
           const SizedBox(width: 8),
           Icon(Icons.schedule, size: 16, color: theme.colorScheme.tertiary),
           const SizedBox(width: 4),
-          const Text(
-            '${liveMinutes}m',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+          Text(
+            liveMinutesLabel,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
           ),
         ],
       ),
