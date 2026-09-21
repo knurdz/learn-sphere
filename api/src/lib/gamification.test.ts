@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   ACTIVITY_XP,
+  MAX_FOREGROUND_DELTA_SECONDS,
   addLocalDays,
   buildAnalytics,
+  clampForegroundDeltaSeconds,
   computeStreakAfterActivity,
   localDateKey,
   parseCoachTourState,
@@ -96,6 +98,7 @@ describe("pickCoachMessage", () => {
         onboardingStep: 1,
         coachTour: { version: 1, steps: ["welcome", "feed", "learn_tab", "learn_live", "learn_tools", "library", "settings"] },
         pendingTourSteps: [],
+        foregroundSeconds: 0,
       },
     });
     expect(message.id).toBe("onboarding_create_space");
@@ -124,6 +127,7 @@ describe("pickCoachMessage", () => {
           ],
         },
         pendingTourSteps: [],
+        foregroundSeconds: 0,
       },
     });
     expect(message.id).toBe("daily_goal_progress");
@@ -152,6 +156,7 @@ describe("pickCoachMessage", () => {
           ],
         },
         pendingTourSteps: [],
+        foregroundSeconds: 0,
       },
     });
     expect(message.id).toBe("daily_goal_met");
@@ -170,6 +175,7 @@ describe("streakAtRisk", () => {
           total_xp: 0,
           daily_goal: 3,
           coach_tour_completed: {},
+          foreground_seconds: 0,
           updated_at: "",
         },
         "2026-08-05",
@@ -262,5 +268,20 @@ describe("buildAnalytics", () => {
     expect(analytics.buckets).toHaveLength(12);
     expect(analytics.buckets[11]?.label).toBe("Aug");
     expect(analytics.buckets[11]?.eventCount).toBe(1);
+  });
+});
+
+describe("clampForegroundDeltaSeconds", () => {
+  it("rejects non-positive and non-finite values", () => {
+    expect(clampForegroundDeltaSeconds(0)).toBe(0);
+    expect(clampForegroundDeltaSeconds(-12)).toBe(0);
+    expect(clampForegroundDeltaSeconds(Number.NaN)).toBe(0);
+  });
+
+  it("floors and caps a pause flush at four hours", () => {
+    expect(clampForegroundDeltaSeconds(90.9)).toBe(90);
+    expect(clampForegroundDeltaSeconds(MAX_FOREGROUND_DELTA_SECONDS + 1)).toBe(
+      MAX_FOREGROUND_DELTA_SECONDS,
+    );
   });
 });

@@ -4,8 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'auth_controller.dart';
-import 'l10n/app_localizations.dart';
+import 'app_usage_provider.dart';
 import 'gamification_provider.dart';
+import 'l10n/app_localizations.dart';
 import 'locale_sync.dart';
 import 'router.dart';
 import 'settings_provider.dart';
@@ -34,6 +35,7 @@ class _LearnSphereAppState extends ConsumerState<LearnSphereApp> with WidgetsBin
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    ref.read(appUsageProvider.notifier).handleLifecycle(state);
     if (state == AppLifecycleState.resumed) {
       ref.read(gamificationProvider.notifier).refresh();
     }
@@ -51,6 +53,11 @@ class _LearnSphereAppState extends ConsumerState<LearnSphereApp> with WidgetsBin
         }
       });
     });
+
+    final session = ref.watch(authControllerProvider).valueOrNull;
+    if (session != null) {
+      ref.watch(appUsageProvider);
+    }
 
     final router = ref.watch(routerProvider);
     final settings = ref.watch(settingsProvider);

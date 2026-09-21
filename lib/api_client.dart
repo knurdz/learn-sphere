@@ -448,6 +448,13 @@ class BridgeApi {
     );
   }
 
+  Future<int> reportForegroundSeconds(int seconds) async {
+    return _handle(
+      _post('/api/gamification/time', data: {'seconds': seconds}),
+      (data) => (jsonMap(data)['foregroundSeconds'] as num?)?.toInt() ?? 0,
+    );
+  }
+
   Future<void> endLiveTutorSession(String sessionId) async {
     await _handle(
       _delete('/api/live-tutor/session', query: {'sessionId': sessionId}),
